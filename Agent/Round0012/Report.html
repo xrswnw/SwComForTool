@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>ComforTool Round0012 报告</title>
+<style>
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; max-width: 1100px; margin: 0 auto; padding: 20px; background: #f8f5ff; color: #403060; line-height: 1.65; }
+  h1 { color: #7830b0; border-bottom: 2px solid #c8b8e0; padding-bottom: 8px; }
+  h2 { color: #7830b0; margin-top: 32px; border-left: 4px solid #7830b0; padding-left: 10px; }
+  h3 { color: #a050c0; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+  th, td { border: 1px solid #d8d0e8; padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: #e0d4f0; color: #503070; }
+  td { background: #fdfaff; }
+  .task { background: #f4f0fa; border-left: 4px solid #7830b0; padding: 12px 16px; margin: 14px 0; border-radius: 4px; }
+  .task h3 { margin-top: 0; }
+  .file { font-family: Menlo, monospace; color: #7830b0; background: #f0ecf8; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+  .tag { display: inline-block; background: #7830b0; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 0.75em; margin-right: 4px; }
+  .tag-green { background: #50a050; }
+  .tag-orange { background: #d08020; }
+  pre { background: #2d2040; color: #e8e0f8; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.85em; line-height: 1.5; }
+  ul li { margin: 4px 0; }
+</style>
+</head>
+<body>
+
+<h1>ComforTool Round0012 — 执行报告</h1>
+<p><strong>日期:</strong> 2026-07-18 &nbsp;|&nbsp; <strong>版本:</strong> SwComForTool V1.0 &nbsp;|&nbsp; <strong>状态:</strong> 已完成 ✅</p>
+
+<h2>需求概览</h2>
+<table>
+  <tr><th>#</th><th>需求</th><th>状态</th></tr>
+  <tr><td>1</td><td>UI 显示调整</td><td><span class="tag tag-green">完成</span></td></tr>
+  <tr><td>2</td><td>工程名 SwComForTool V1.0, 编译产物/导航/版本号</td><td><span class="tag tag-green">完成</span></td></tr>
+  <tr><td>3</td><td>区域英文命名 (Handshake/Function/Log/Exporting Area)</td><td><span class="tag tag-green">完成</span></td></tr>
+  <tr><td>4</td><td>校验描述仅固件更新期间显示</td><td><span class="tag tag-green">完成</span></td></tr>
+  <tr><td>5</td><td>Log/Exporting 独立边框 (QGroupBox)</td><td><span class="tag tag-green">完成</span></td></tr>
+  <tr><td>6</td><td>Log 与 Exporting 位置交换 (Exporting 在上)</td><td><span class="tag tag-green">完成</span></td></tr>
+  <tr><td>7</td><td>最下端 statusBar: 系统消息(左) + 版本号(右)</td><td><span class="tag tag-green">完成</span></td></tr>
+  <tr><td>8</td><td>Handshake 重设计 (端口/路径/连接按钮)</td><td><span class="tag tag-green">完成</span></td></tr>
+</table>
+
+<h2>已完成核心任务</h2>
+
+<!-- Task 1 -->
+<div class="task">
+<h3>Task 1: 工程重命名 SwComForTool V1.0 <span class="tag">基建</span></h3>
+<p><strong>文件:</strong> <span class="file">CMakeLists.txt, src/main.cpp, .vscode/launch.json, build_win.bat</span></p>
+<ul>
+  <li><code>project(SwComForTool VERSION 1.0.0 ...)</code></li>
+  <li>可执行文件名: <code>SwComForTool</code> (替代 ComforTool)</li>
+  <li>macOS bundle ID: <code>com.swcomfor.tool</code></li>
+  <li>Qt 链接目标 / 编译定义 / RPATH 全部同步更新</li>
+  <li>窗口标题: <code>"SwComForTool V1.0"</code></li>
+  <li>版本号通过 QStatusBar 永久 widget 右下角显示</li>
+</ul>
+</div>
+
+<!-- Task 2 -->
+<div class="task">
+<h3>Task 2: 区域英文命名 <span class="tag tag-orange">UI</span></h3>
+<ul>
+  <li>"握手栏" → <code>"Handshake Area"</code></li>
+  <li>"功能栏" → <code>"Function Area"</code></li>
+  <li>"日志区" → <code>"Log Area"</code></li>
+  <li>"发送区" → <code>"Exporting Area"</code></li>
+</ul>
+</div>
+
+<!-- Task 3 -->
+<div class="task">
+<h3>Task 3: Handshake Area 重设计 <span class="tag tag-orange">UI</span>+<span class="tag">逻辑</span></h3>
+<p><strong>文件:</strong> <span class="file">src/MainWindow.h/.cpp</span></p>
+<h4>3.1 端口(原"接口")</h4>
+<ul>
+  <li>QComboBox: "USB" (默认) / "COM (暂不启用)"</li>
+  <li>整体 <code>setEnabled(false)</code> — 仅显示, 不可选</li>
+</ul>
+<h4>3.2 路径(原"通信接口")</h4>
+<ul>
+  <li>QLabel 替代 QComboBox, 固定宽度 180px 居中, 显示 "VID XXXX:PID XXXX"</li>
+  <li>点击触发 <code>onPathLabelClicked</code> → eventFilter 捕获 mousePressEvent → 弹 QMenu 列出当前 HID 设备</li>
+  <li>菜单显示 "VID XXXX:PID XXXX | 产品名"</li>
+</ul>
+<h4>3.3 连接/断开按钮</h4>
+<ul>
+  <li>默认 "连接", 紫色背景</li>
+  <li>连接成功后: "断开" + 绿色背景 (QSS <code>[connected="true"]</code>)</li>
+  <li>动态样式通过 <code>setProperty("connected") + unpolish/polish</code></li>
+</ul>
+<h4>3.4 自动连接 VID 0x5377</h4>
+<ul>
+  <li>点击连接 → <code>refreshPorts</code> 枚举所有 HID</li>
+  <li>优先选 VID=0x5377 设备 → 自动 open</li>
+  <li>否则选 m_hidDevices[0] 填入路径, 但不自动 open (用户需再点连接)</li>
+</ul>
+<h4>3.5 关键代码</h4>
+<pre>// eventFilter 捕获点击
+bool MainWindow::eventFilter(QObject *obj, QEvent *event) {
+    if (obj == m_pathLabel && event->type() == QEvent::MouseButtonPress) {
+        onPathLabelClicked(); return true;
+    }
+    return QMainWindow::eventFilter(obj, event);
+}
+
+// 动态按钮样式
+m_openBtn->setText(isConnected ? tr("断开") : tr("连接"));
+m_openBtn->setProperty("connected", isConnected);
+m_openBtn->style()->unpolish(m_openBtn);
+m_openBtn->style()->polish(m_openBtn);</pre>
+</div>
+
+<!-- Task 4 -->
+<div class="task">
+<h3>Task 4: 校验描述仅固件更新期间显示 <span class="tag tag-orange">UI</span></h3>
+<ul>
+  <li>升级控件 (m_progressBar, m_verifyLevelCombo, verifyLabel) 默认 <code>visible=false</code></li>
+  <li>点击 "更新固件" → <code>flashControls(true)</code> 中显示</li>
+  <li>升级完成 → <code>endUpgrade()</code> 隐藏</li>
+  <li>m_upgradeStatusLabel (左下角) 仅升级期间可见</li>
+</ul>
+</div>
+
+<!-- Task 5+6 -->
+<div class="task">
+<h3>Task 5+6: Log/Exporting 独立边框 + 位置交换 <span class="tag tag-orange">UI</span></h3>
+<ul>
+  <li>Log Area 和 Exporting Area 各包为 <code>QGroupBox</code> (继承 Handshake Area 风格: <code>border: 1px solid #c8b8e0; border-radius: 6px</code>)</li>
+  <li><code>QSplitter Qt::Vertical</code> 中顺序: Exporting Area (index 0) → Log Area (index 1)</li>
+  <li>Exporting 在上(发送区), Log 在下(日志区)</li>
+</ul>
+</div>
+
+<!-- Task 7 -->
+<div class="task">
+<h3>Task 7: statusBar 状态栏 <span class="tag tag-orange">UI</span></h3>
+<ul>
+  <li>左: 系统消息 (扫描USB/连接状态等), 用 <code>statusBar()->showMessage(msg, ms)</code> 短暂显示</li>
+  <li>右: 永久 widget 显示 <code>"SwComForTool V1.0 (Qt 6.8.3)"</code></li>
+  <li>替换原 left-bottom 操作描述行, 全部用 statusBar 消息</li>
+</ul>
+</div>
+
+<h2>关键文件改动</h2>
+<table>
+<tr><th>文件</th><th>类型</th><th>改动摘要</th></tr>
+<tr><td><span class="file">CMakeLists.txt</span></td><td>修改</td><td>project, target, bundle ID, source 引用</td></tr>
+<tr><td><span class="file">src/main.cpp</span></td><td>修改</td><td>QApplication 名, 窗口标题 SwComForTool V1.0</td></tr>
+<tr><td><span class="file">src/MainWindow.h</span></td><td>重写</td><td>新成员 m_pathLabel, m_hidDevices, m_selectedHudIdx, eventFilter</td></tr>
+<tr><td><span class="file">src/MainWindow.cpp</span></td><td>大改</td><td>Handshake Area 重设计, 路径菜单, 连接按钮动态样式, Log/Exporting 调换, 状态栏</td></tr>
+<tr><td><span class="file">.vscode/launch.json</span></td><td>修改</td><td>program 路径 SwComForTool</td></tr>
+<tr><td><span class="file">build_win.bat</span></td><td>修改</td><td>SwComForTool 路径</td></tr>
+</table>
+
+<h2>构建验证</h2>
+<pre>[100%] Built target SwComForTool
+RUNNING (offscreen 平台 3s 内不崩溃)</pre>
+
+<h2>备份</h2>
+<table>
+<tr><th>Round</th><th>说明</th></tr>
+<tr><td>Round_012</td><td>改名 SwComForTool 前备份 (ComforTool V1.2.0)</td></tr>
+<tr><td>Round_013</td><td>Round0012 改名前最终状态</td></tr>
+<tr><td>Round_014</td><td>Round0012 完成后 (SwComForTool V1.0)</td></tr>
+</table>
+
+<h2>已知遗留 / 后续</h2>
+<ul>
+  <li>DAEMON 启动 + AEWP 提权流程未重测 (本次仅改 UI, 通信链路不变)</li>
+  <li>macOS GUI root 仍可能崩溃 (Round0011 已记录, 需 daemon 架构)</li>
+  <li>15693 UI 按钮仍未实现 (协议层完成, 操作 UI 留 Round0012+)</li>
+</ul>
+
+</body>
+</html>

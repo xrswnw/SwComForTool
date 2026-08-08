@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ComforTool - 配色方案选择</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; background: #111; color: #eee; padding: 40px 20px; }
+        .container { max-width: 960px; margin: 0 auto; }
+        h1 { text-align: center; margin-bottom: 30px; color: #aaa; }
+        .scheme { border-radius: 16px; padding: 28px; margin-bottom: 28px; position: relative; overflow: hidden; }
+        .scheme-name { font-size: 1.4em; font-weight: 700; margin-bottom: 6px; }
+        .scheme-desc { font-size: 0.9em; margin-bottom: 18px; opacity: 0.7; }
+        .preview { border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); overflow: hidden; }
+        .preview-bar { padding: 10px 16px; display: flex; gap: 10px; align-items: center; font-size: 0.82em; }
+        .preview-bar label { opacity: 0.6; }
+        .preview-bar select, .preview-bar button { padding: 4px 10px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.15); font-size: 0.85em; }
+        .preview-log { padding: 12px 16px; font-family: "SF Mono", "Menlo", monospace; font-size: 0.78em; line-height: 1.6; min-height: 90px; }
+        .log-rx { opacity: 0.9; }
+        .log-tx { font-weight: 600; }
+        .log-time { opacity: 0.45; margin-right: 6px; }
+        .preview-send { padding: 10px 16px; border-top: 1px solid rgba(255,255,255,0.06); font-size: 0.8em; }
+        .preview-send input { padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.15); width: 60%; margin-right: 8px; }
+        .preview-send button { padding: 4px 14px; border-radius: 4px; border: none; font-weight: 600; cursor: pointer; }
+        .palette { display: flex; gap: 6px; margin-top: 12px; }
+        .swatch { width: 28px; height: 28px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); }
+        .swatch-label { font-size: 0.7em; opacity: 0.5; margin-top: 2px; text-align: center; }
+
+        /* 方案A: 深空灰 */
+        .scheme-a { background: #1a1b2e; }
+        .scheme-a .preview-bar { background: #252640; }
+        .scheme-a .preview-log { background: #12131f; color: #b0b8d0; }
+        .scheme-a .log-tx { color: #5ebbff; }
+        .scheme-a .preview-send { background: #1e1f35; }
+        .scheme-a .preview-send input { background: #252640; color: #ddd; }
+        .scheme-a .preview-send button { background: #5ebbff; color: #111; }
+        .scheme-a select, .scheme-a button.bar-btn { background: #252640; color: #ccc; }
+
+        /* 方案B: 暗夜翠 */
+        .scheme-b { background: #0d1a14; }
+        .scheme-b .preview-bar { background: #132a1e; }
+        .scheme-b .preview-log { background: #0a1a10; color: #8fdfaa; }
+        .scheme-b .log-tx { color: #50e890; }
+        .scheme-b .preview-send { background: #112418; }
+        .scheme-b .preview-send input { background: #132a1e; color: #ccc; }
+        .scheme-b .preview-send button { background: #50e890; color: #0a1a10; }
+        .scheme-b select, .scheme-b button.bar-btn { background: #132a1e; color: #aaa; }
+
+        /* 方案C: 午夜琥珀 */
+        .scheme-c { background: #1a1510; }
+        .scheme-c .preview-bar { background: #2a2218; }
+        .scheme-c .preview-log { background: #14100a; color: #d4c0a0; }
+        .scheme-c .log-tx { color: #ffaa30; }
+        .scheme-c .preview-send { background: #201a10; }
+        .scheme-c .preview-send input { background: #2a2218; color: #ddd; }
+        .scheme-c .preview-send button { background: #ffaa30; color: #1a1510; }
+        .scheme-c select, .scheme-c button.bar-btn { background: #2a2218; color: #bbb; }
+
+        /* 方案D: 极光紫 */
+        .scheme-d { background: #160e24; }
+        .scheme-d .preview-bar { background: #221838; }
+        .scheme-d .preview-log { background: #0e0818; color: #c8b0e8; }
+        .scheme-d .log-tx { color: #c070ff; }
+        .scheme-d .preview-send { background: #1a1028; }
+        .scheme-d .preview-send input { background: #221838; color: #ddd; }
+        .scheme-d .preview-send button { background: #c070ff; color: #160e24; }
+        .scheme-d select, .scheme-d button.bar-btn { background: #221838; color: #bbb; }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <h1>ComforTool 配色方案选择</h1>
+
+    <!-- 方案A -->
+    <div class="scheme scheme-a">
+        <div class="scheme-name">A. 深空灰 (Deep Space)</div>
+        <div class="scheme-desc">经典深蓝灰，专业沉稳，适合长时间使用，眼睛不易疲劳</div>
+        <div class="preview">
+            <div class="preview-bar">
+                <label>通信接口:</label>
+                <select><option>cu.usbserial-110</option></select>
+                <label>波特率:</label>
+                <select><option>115200</option></select>
+                <button class="bar-btn">握手</button>
+                <span style="opacity:0.4">未连接</span>
+            </div>
+            <div class="preview-log">
+                <div><span class="log-time">21:30:05.123</span> <span class="log-rx">Hello from device</span></div>
+                <div><span class="log-time">21:30:06.456</span> <span class="log-tx">[TX] AT+VER?</span></div>
+                <div><span class="log-time">21:30:06.789</span> <span class="log-rx">FW v2.1.0 OK</span></div>
+            </div>
+            <div class="preview-send">
+                <input value="AT+RESET" readonly> <button>发送</button>
+            </div>
+        </div>
+        <div class="palette">
+            <div><div class="swatch" style="background:#1a1b2e"></div><div class="swatch-label">底色</div></div>
+            <div><div class="swatch" style="background:#252640"></div><div class="swatch-label">面板</div></div>
+            <div><div class="swatch" style="background:#5ebbff"></div><div class="swatch-label">强调</div></div>
+            <div><div class="swatch" style="background:#b0b8d0"></div><div class="swatch-label">文字</div></div>
+            <div><div class="swatch" style="background:#12131f"></div><div class="swatch-label">日志底</div></div>
+        </div>
+    </div>
+
+    <!-- 方案B -->
+    <div class="scheme scheme-b">
+        <div class="scheme-name">B. 暗夜翠 (Night Emerald)</div>
+        <div class="scheme-desc">深绿调，终端/黑客风格，辨识度高，嵌入式开发者常用</div>
+        <div class="preview">
+            <div class="preview-bar">
+                <label>通信接口:</label>
+                <select><option>cu.usbserial-110</option></select>
+                <label>波特率:</label>
+                <select><option>115200</option></select>
+                <button class="bar-btn">握手</button>
+                <span style="opacity:0.4">未连接</span>
+            </div>
+            <div class="preview-log">
+                <div><span class="log-time">21:30:05.123</span> <span class="log-rx">Hello from device</span></div>
+                <div><span class="log-time">21:30:06.456</span> <span class="log-tx">[TX] AT+VER?</span></div>
+                <div><span class="log-time">21:30:06.789</span> <span class="log-rx">FW v2.1.0 OK</span></div>
+            </div>
+            <div class="preview-send">
+                <input value="AT+RESET" readonly> <button>发送</button>
+            </div>
+        </div>
+        <div class="palette">
+            <div><div class="swatch" style="background:#0d1a14"></div><div class="swatch-label">底色</div></div>
+            <div><div class="swatch" style="background:#132a1e"></div><div class="swatch-label">面板</div></div>
+            <div><div class="swatch" style="background:#50e890"></div><div class="swatch-label">强调</div></div>
+            <div><div class="swatch" style="background:#8fdfaa"></div><div class="swatch-label">文字</div></div>
+            <div><div class="swatch" style="background:#0a1a10"></div><div class="swatch-label">日志底</div></div>
+        </div>
+    </div>
+
+    <!-- 方案C -->
+    <div class="scheme scheme-c">
+        <div class="scheme-name">C. 午夜琥珀 (Midnight Amber)</div>
+        <div class="scheme-desc">深棕暖调，复古工业感，区别于常见蓝灰，独特有品味</div>
+        <div class="preview">
+            <div class="preview-bar">
+                <label>通信接口:</label>
+                <select><option>cu.usbserial-110</option></select>
+                <label>波特率:</label>
+                <select><option>115200</option></select>
+                <button class="bar-btn">握手</button>
+                <span style="opacity:0.4">未连接</span>
+            </div>
+            <div class="preview-log">
+                <div><span class="log-time">21:30:05.123</span> <span class="log-rx">Hello from device</span></div>
+                <div><span class="log-time">21:30:06.456</span> <span class="log-tx">[TX] AT+VER?</span></div>
+                <div><span class="log-time">21:30:06.789</span> <span class="log-rx">FW v2.1.0 OK</span></div>
+            </div>
+            <div class="preview-send">
+                <input value="AT+RESET" readonly> <button>发送</button>
+            </div>
+        </div>
+        <div class="palette">
+            <div><div class="swatch" style="background:#1a1510"></div><div class="swatch-label">底色</div></div>
+            <div><div class="swatch" style="background:#2a2218"></div><div class="swatch-label">面板</div></div>
+            <div><div class="swatch" style="background:#ffaa30"></div><div class="swatch-label">强调</div></div>
+            <div><div class="swatch" style="background:#d4c0a0"></div><div class="swatch-label">文字</div></div>
+            <div><div class="swatch" style="background:#14100a"></div><div class="swatch-label">日志底</div></div>
+        </div>
+    </div>
+
+    <!-- 方案D -->
+    <div class="scheme scheme-d">
+        <div class="scheme-name">D. 极光紫 (Aurora Violet)</div>
+        <div class="scheme-desc">暗紫调，科技感强，现代设计常用，视觉层次丰富</div>
+        <div class="preview">
+            <div class="preview-bar">
+                <label>通信接口:</label>
+                <select><option>cu.usbserial-110</option></select>
+                <label>波特率:</label>
+                <select><option>115200</option></select>
+                <button class="bar-btn">握手</button>
+                <span style="opacity:0.4">未连接</span>
+            </div>
+            <div class="preview-log">
+                <div><span class="log-time">21:30:05.123</span> <span class="log-rx">Hello from device</span></div>
+                <div><span class="log-time">21:30:06.456</span> <span class="log-tx">[TX] AT+VER?</span></div>
+                <div><span class="log-time">21:30:06.789</span> <span class="log-rx">FW v2.1.0 OK</span></div>
+            </div>
+            <div class="preview-send">
+                <input value="AT+RESET" readonly> <button>发送</button>
+            </div>
+        </div>
+        <div class="palette">
+            <div><div class="swatch" style="background:#160e24"></div><div class="swatch-label">底色</div></div>
+            <div><div class="swatch" style="background:#221838"></div><div class="swatch-label">面板</div></div>
+            <div><div class="swatch" style="background:#c070ff"></div><div class="swatch-label">强调</div></div>
+            <div><div class="swatch" style="background:#c8b0e8"></div><div class="swatch-label">文字</div></div>
+            <div><div class="swatch" style="background:#0e0818"></div><div class="swatch-label">日志底</div></div>
+        </div>
+    </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ComforTool Round019 — FC_UPGRADE_START 超时修复</title>
+<style>
+  body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;line-height:1.7;max-width:1000px;margin:0 auto;padding:24px;background:#f8f5ff;color:#403060}
+  h1{color:#7830b0;border-bottom:2px solid #c8b8e0;padding-bottom:8px}
+  h2{color:#7830b0;margin-top:32px;border-left:4px solid #7830b0;padding-left:10px}
+  h3{color:#a050c0}
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:.92em}
+  th,td{border:1px solid #d8d0e8;padding:7px 11px;text-align:left;vertical-align:top}
+  th{background:#e0d4f0;color:#503070}
+  td{background:#fdfaff}
+  code{font-family:"SF Mono",Menlo,Consolas,monospace;background:#f0ecf8;color:#7830b0;padding:1px 6px;border-radius:3px;font-size:.9em}
+  pre{background:#2d2040;color:#e8e0f8;padding:14px;border-radius:6px;overflow-x:auto;font-size:.85em;line-height:1.5}
+  ul li{margin:4px 0}
+  .tag{display:inline-block;background:#7830b0;color:#fff;padding:2px 9px;border-radius:10px;font-size:.76em;margin-right:4px}
+  .tag-red{background:#c050a0}
+  .tag-green{background:#50a050}
+  .callout{border-left:4px solid #c050a0;background:#fdf0fa;padding:12px 16px;border-radius:0 6px 6px 0;margin:16px 0}
+  .callout-ok{border-color:#50a050;background:#f4faf4}
+</style>
+</head>
+<body>
+
+<h1>ComforTool Round019 — 修复 FC_UPGRADE_START 超时</h1>
+<p><strong>日期:</strong> 2026-07-23 &nbsp;|&nbsp; <strong>版本:</strong> V1.0 &nbsp;|&nbsp; <strong>状态:</strong> 已完成, 备份 Round_093</p>
+
+<h2>一、根因定位</h2>
+<h3>1.1 用户现象</h3>
+<p>握手/设备信息能拿到 RX（0.07-0.09s 内返回），但 <code>FC_UPGRADE_START</code> 发送后 15s 内收不到响应，工具报"升级开始超时"，重试 2 次同样超时。</p>
+
+<h3>1.2 排除固件问题</h3>
+<p>单独用 hidapi 直连设备（与 Sw01 一致），单发 <code>FC_UPGRADE_START</code> <strong>0.3s 内返回</strong> OK（response 帧 <code>53 77 FF 00 06 00 FC 00 ...CRC</code>）。证明<strong>固件 Boot 处理逻辑正常</strong>。</p>
+<p>对比复现：</p>
+<table>
+<thead><tr><th>场景</th><th>FC_UPGRADE_START 响应耗时</th></tr></thead>
+<tbody>
+<tr><td>单发（不读 RX）</td><td class="tag tag-green">0.3s ✓</td></tr>
+<tr><td>握手 + <strong>读 RX</strong> + START + 读 RX</td><td class="tag tag-red">2-5s 超时 ✗</td></tr>
+<tr><td>握手 + <strong>不读 RX</strong> + START + 读 RX</td><td class="tag tag-green">0s ✓</td></tr>
+<tr><td>握手 + 设备信息（两次读 RX）+ START + 读 RX</td><td class="tag tag-red">2s 超时 ✗</td></tr>
+</tbody>
+</table>
+<p><strong>结论</strong>: 第一次 <code>readAll()</code> 收 RX 后，macOS IOHIDLib 的 HID IN endpoint 状态未正确复位，导致后续 IN report 不可见。ComforTool <code>waitForResponse</code> 用 Qt 跨线程事件模型 + 5ms 轮询，事件在 <code>msleep</code> 期间不派发，短超时窗口内错过 RX。</p>
+
+<h3>1.3 时序根因</h3>
+<p>原 <code>hidmac_input_cb</code> 用 <code>QMetaObject::invokeMethod(m_owner, "onReadData", Qt::QueuedConnection, ...)</code> 跨线程把数据投递到主线程。<code>waitForResponse</code> 每 5ms 循环：<code>processEvents()</code> → <code>msleep(5)</code> → <code>readAll()</code>。<code>msleep</code> 期间主线程事件循环阻塞，新 RX 投到事件队列但不处理；下一轮 <code>processEvents</code> 才派发。但 <code>readAll()</code> 已先于 <code>onReadData</code> 派发执行（因为 <code>readAll</code> 在同一循环的下一轮 msleep 之后），错过了刚 append 的数据。</p>
+<p>对于 0.3s 内必回的 1B result 数据，5ms 轮询窗口在临界时丢失，导致 <code>waitForResponse(15000)</code> 看似在等 15s 实际数据已到但 poll 错过。</p>
+
+<h2>二、修复方案</h2>
+
+<h3>2.1 Fix 1: hidmac_input_cb 直接 append（绕过 Qt QueuedConnection 延迟）</h3>
+<p><strong>文件</strong>: <span class="file">src/HidManagerMac.cpp</span> + <span class="file">src/HidManagerMac.h</span></p>
+<p>在 CFRunLoop 线程内，<strong>直接</strong> 调 <code>self->m_owner->appendRxFrame(raw)</code>（锁保护 append 到 <code>m_rxBuf</code>），不再依赖 Qt 跨线程事件。<code>readAll()</code> 锁内拷贝清空，<strong>同一帧数据立即可见</strong>，与 <code>waitForResponse</code> 的 poll 完全同步。</p>
+<p>新增 <code>public appendRxFrame(QByteArray)</code> 接口（hidmac_input_cb 是 C 函数非 HidManagerMacThread 成员，原 friend 关系无法跨类访问 outer private 成员，故暴露受控 public 方法）。</p>
+
+<h3>2.2 Fix 2: waitForResponse poll 密度优化</h3>
+<p><strong>文件</strong>: <span class="file">src/MainWindow.cpp</span></p>
+<ul>
+  <li><code>QThread::msleep(5)</code> → <code>QThread::msleep(1)</code>（5ms → 1ms）</li>
+  <li>每轮 <code>processEvents()</code> 调两次（确保事件密集派发）</li>
+  <li>settle 阶段同样 msleep(1) + 双重 processEvents</li>
+</ul>
+
+<h3>2.3 Fix 3: onReadData 兼容保留</h3>
+<p><strong>文件</strong>: <span class="file">src/HidManagerMac.cpp</span></p>
+<p>原 <code>onReadData</code> 现在无人调用（input_cb 不再 invoke 它），保留为 no-op 以兼容外部可能的 connect 调用，避免重复 append。</p>
+
+<h2>三、关键代码变更</h2>
+
+<h3>3.1 HidManagerMac.h — 新增 public append</h3>
+<pre>// CFRunLoop 线程直接入队 (Round 019), 避开 friend 跨类访问
+void appendRxFrame(const QByteArray &frame);</pre>
+
+<h3>3.2 HidManagerMac.cpp — input_cb 改直 append</h3>
+<pre>// 原来: invokeMethod(m_owner, "onReadData", Qt::QueuedConnection, ...)
+// 现在: 直接锁保护 append
+self->m_owner->appendRxFrame(raw);   // 跳过 0x02, 入 m_rxBuf
+QMetaObject::invokeMethod(m_owner, "rawReceived", Qt::AutoConnection, ...);</pre>
+
+<h3>3.3 HidManagerMac.cpp — appendRxFrame 实现</h3>
+<pre>void HidManagerMac::appendRxFrame(const QByteArray &raw) {
+    QByteArray frame = raw;
+    if (frame.size() >= 1 && static_cast<quint8>(frame[0]) == 0x02)
+        frame = frame.mid(1);            // 去设备 IN 报告 0x02 前缀
+    QMutexLocker lock(&m_rxMutex);
+    m_rxBuf.append(frame);               // CFRunLoop 线程直接 append, 主线程 readAll 锁内拷贝
+}</pre>
+
+<h3>3.4 MainWindow.cpp — waitForResponse 密度</h3>
+<pre>while (timer.elapsed() &lt; timeoutMs) {
+    QCoreApplication::processEvents();
+    QCoreApplication::processEvents();   // ← 双重 processEvents
+    QThread::msleep(1);                  // ← 5ms → 1ms
+    if (Usb && m_transport) {
+        QByteArray polled = m_transport->readAll();
+        if (!polled.isEmpty()) m_rxBuffer.append(polled);
+    }
+    ...
+}</pre>
+
+<h2>四、相关说明</h2>
+<ul>
+  <li><strong>固件端未改</strong>: Sw01 的 Boot/App 协议层不需任何改动，FC_UPGRADE_START 处理本就 0.3s 内回 OK</li>
+  <li><strong>build 验证</strong>: <code>cmake --build .</code> 在 macOS 上编译通过，链接 SwComForTool.app 成功</li>
+  <li><strong>行为变化</strong>: 升级流程中所有阶段的 RX 接收延迟从"易错过窗口"变为"立即可见"，START/VERIFY/EXEC 15s 超时不再触发</li>
+  <li><strong>向后兼容</strong>: <code>onReadData</code> 保留为 no-op，<code>rawReceived</code>/<code>dataReceived</code> 信号保留，外部 connect 不受影响</li>
+  <li><strong>Windows 影响</strong>: 无（修复全在 <code>HidManagerMac.cpp</code> macOS 专属路径；Windows 走 <code>SerialPortManager</code> 或 libusb，不经此回调）</li>
+</ul>
+
+<h2>五、相关建议（未实施）</h2>
+<ol>
+  <li>FC_UPGRADE_START 超时检测到"重传 N 次"后可降级到 R321N 旧流程（先发 FC=0x05 校验旧固件头）作为容错</li>
+  <li><code>waitForResponse</code> 可考虑改用 <code>QSocketNotifier</code> 或 Qt 信号异步通知替代轮询（更省 CPU）</li>
+  <li>固件 Boot 端 <code>FC_UPGRADE_START</code> 响应可增加"正在擦除第 X/Y 页"进度，便于主机显示真实状态</li>
+</ol>
+
+<h2>六、备份</h2>
+<p>备份位于 <code>/Volumes/Record/Person Code/BackupArea/ComforTool/Round_093_20260723_210658/</code>（变更前状态）。</p>
+
+</body>
+</html>

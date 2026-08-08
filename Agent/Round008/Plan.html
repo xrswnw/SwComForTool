@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ComforTool Round008 计划</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif; background: #f0eaf8; color: #303030; line-height: 1.8; padding: 24px; }
+  .container { max-width: 1000px; margin: 0 auto; }
+  h1 { text-align: center; font-size: 2em; color: #503070; margin-bottom: 8px; }
+  .sub { text-align: center; color: #8870a8; font-size: 0.95em; margin-bottom: 32px; }
+  h2 { color: #7830b0; font-size: 1.35em; margin: 28px 0 12px; border-bottom: 2px solid #d0c0e8; padding-bottom: 6px; }
+  h3 { color: #503070; font-size: 1.1em; margin: 18px 0 8px; }
+  p, li { font-size: 0.96em; }
+  p { margin: 6px 0; }
+  ul, ol { margin: 6px 0 8px 24px; }
+  li { margin: 3px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 0.93em; }
+  th, td { border: 1px solid #c8b8e0; padding: 6px 10px; text-align: left; }
+  th { background: #e0d4f0; color: #503070; font-weight: 600; }
+  tr:nth-child(even) { background: #f8f4ff; }
+  .card { background: #fff; border: 1px solid #d8d0e8; border-radius: 10px; padding: 18px 24px; margin: 14px 0; box-shadow: 0 2px 8px rgba(80,48,112,0.06); }
+  .warn { background: #fff8f0; border: 1px solid #e8c8a0; border-left: 4px solid #d08020; border-radius: 8px; padding: 12px 16px; margin: 12px 0; }
+  .ok { background: #f0faf0; border: 1px solid #a0d8a0; border-left: 4px solid #50a050; border-radius: 8px; padding: 12px 16px; margin: 12px 0; }
+  .change { background: #fff8e0; border-left: 4px solid #d0a020; border-radius: 8px; padding: 12px 16px; margin: 12px 0; }
+  code { font-family: "Menlo", "Consolas", monospace; background: #f4f0fa; padding: 1px 5px; border-radius: 3px; font-size: 0.9em; color: #503070; }
+  pre { background: #2a1a3a; color: #d8c8e8; padding: 14px; border-radius: 8px; overflow-x: auto; font-family: "Menlo", "Consolas", monospace; font-size: 0.88em; line-height: 1.6; margin: 10px 0; }
+  .ver { color: #a080c0; font-size: 0.82em; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Round008: 升级校验与版本显示修正</h1>
+<p class="sub">ComforTool &nbsp;|&nbsp; v1.0 &nbsp;|&nbsp; 2026-05-30</p>
+
+<!-- ============================================================ -->
+<h2>1. 需求分析</h2>
+
+<div class="card">
+<table>
+  <tr><th>#</th><th>需求</th><th>当前问题</th><th>修改方向</th></tr>
+  <tr>
+    <td>1</td>
+    <td>擦写完FLASH后验证失败，无需重试</td>
+    <td>当前FC=0x05校验失败后<code>endUpgrade(false); return;</code>已不重试。<br>但FC=0x04传输失败仍会<code>continue</code>触发3次重试(从头擦除+写入)</td>
+    <td>传输失败也不重试，直接结束升级</td>
+  </tr>
+  <tr>
+    <td>2</td>
+    <td>地址显示框在版本信息GroupBox内居中</td>
+    <td><code>m_verTopEdit</code>设置了<code>setAlignment(Qt::AlignCenter)</code>文字居中，但控件本身靠左显示(MaximumWidth=70，GroupBox宽约140+，左侧留白)</td>
+    <td>在verLayout上设置<code>setAlignment(Qt::AlignCenter)</code>让控件居中，或改用Container居中</td>
+  </tr>
+  <tr>
+    <td>3</td>
+    <td>版本信息根据Layer区分显示：<br>BOOT区 → 仅显示BOOT版本+硬件版本<br>APP区 → 显示软件版本+硬件版本</td>
+    <td>当前显示格式: <code>"HW SW [BOOT:Vx.y]"</code>，不区分Layer</td>
+    <td>Layer=0(BOOT): 显示 <code>"BOOT_V1.0 AD_V1.3"</code><br>Layer=1(APP): 显示 <code>"AD01 V1.0 AD_V1.3"</code></td>
+  </tr>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<h2>2. 修改详情</h2>
+
+<h3>2.1 需求1：升级失败不重试</h3>
+<div class="card">
+<p><strong>当前逻辑：</strong></p>
+<pre>
+for (attempt = 1; attempt <= 3; ++attempt) {
+    FC=0x03 擦除...失败 → continue (重试)
+    FC=0x04 传输...失败 → transferFailed=true; break → continue (重试)
+    FC=0x05 校验...失败 → endUpgrade(false); return (不重试 ✓)
+}
+</pre>
+<p><strong>修改后逻辑：</strong></p>
+<pre>
+FC=0x03 擦除...失败 → endUpgrade(false); return (不重试)
+FC=0x04 传输...失败 → endUpgrade(false); return (不重试)
+FC=0x05 校验...失败 → endUpgrade(false); return (不重试,已实现)
+</pre>
+<div class="change">
+<strong>具体改动：</strong>
+<ul>
+  <li>移除<code>MAX_RETRIES</code>重试循环，改为线性顺序执行</li>
+  <li>FC=0x03超时/失败 → <code>endUpgrade(false); return;</code></li>
+  <li>FC=0x04传输失败 → <code>endUpgrade(false); return;</code></li>
+  <li>保留: FC=0x06执行后无响应→3秒后握手检查Layer的逻辑(这是正常等待，不是重试)</li>
+</ul>
+</div>
+</div>
+
+<h3>2.2 需求2：地址输入框居中</h3>
+<div class="card">
+<p><strong>当前：</strong><code>m_verTopEdit</code> MaximumWidth=70，GroupBox约140px，控件靠左。</p>
+<p><strong>修改：</strong></p>
+<pre>
+// verLayout中两个控件都使用居中对齐
+verLayout->setAlignment(m_verTopEdit, Qt::AlignCenter);
+verLayout->setAlignment(m_verBottomEdit, Qt::AlignCenter);
+</pre>
+</div>
+
+<h3>2.3 需求3：版本信息按Layer区分显示</h3>
+<div class="card">
+<p><strong>显示规则：</strong></p>
+<table>
+  <tr><th>Layer</th><th>上栏(地址)</th><th>下栏(版本)</th><th>示例</th></tr>
+  <tr>
+    <td>0 (BOOT)</td>
+    <td>设备地址(不变)</td>
+    <td>BOOT版本 + 硬件版本</td>
+    <td><code>BOOT_V1.0 AD_V1.3</code></td>
+  </tr>
+  <tr>
+    <td>1 (APP)</td>
+    <td>设备地址(不变)</td>
+    <td>项目名+软件版本 + 硬件版本</td>
+    <td><code>AD01 V1.0 AD_V1.3</code></td>
+  </tr>
+</table>
+
+<p><strong>变更：</strong></p>
+<ul>
+  <li>握手阶段获取Layer</li>
+  <li>FC=0x07返回后，根据<code>devInfo.layer</code>分别组装版本字符串</li>
+  <li>Layer=0: <code>"BOOT_" + bootVersion + " " + hwVersion</code></li>
+  <li>Layer=1: <code>projectName(或"AD01") + " " + swVersion + " " + hwVersion</code></li>
+  <li>verBottomEdit宽度适当增大(140→180)以容纳更长字符串</li>
+</ul>
+</div>
+
+<!-- ============================================================ -->
+<h2>3. 修改文件清单</h2>
+
+<div class="card">
+<table>
+  <tr><th>文件</th><th>修改</th><th>工作量</th></tr>
+  <tr><td><code>MainWindow.cpp</code></td>
+    <td>
+      1. 移除升级重试循环，改为线性执行<br>
+      2. verLayout控件居中对齐<br>
+      3. 版本信息按Layer区分显示<br>
+      4. verBottomEdit宽度→180
+    </td>
+    <td>中</td>
+  </tr>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<h2>4. 优化建议</h2>
+
+<div class="card">
+<ul>
+  <li>移除重试后，升级状态标签不再显示"(%1/%2)"重试计数</li>
+  <li>升级失败时日志建议用户检查固件文件和连接后重试</li>
+</ul>
+</div>
+
+<p class="ver">Plan v1.0 — 2026-05-30 — 等待确认</p>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ComforTool Round0011 计划</title>
+<style>
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; max-width: 1000px; margin: 0 auto; padding: 20px; background: #f8f5ff; color: #403060; line-height: 1.65; }
+  h1 { color: #7830b0; border-bottom: 2px solid #c8b8e0; padding-bottom: 8px; }
+  h2 { color: #7830b0; margin-top: 32px; border-left: 4px solid #7830b0; padding-left: 10px; }
+  h3 { color: #a050c0; }
+  h4 { color: #503070; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+  th, td { border: 1px solid #d8d0e8; padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: #e0d4f0; color: #503070; }
+  td { background: #fdfaff; }
+  .task { background: #f4f0fa; border-left: 4px solid #7830b0; padding: 14px 18px; margin: 14px 0; border-radius: 4px; }
+  .task h3 { margin-top: 0; }
+  .file { font-family: Menlo, monospace; color: #7830b0; background: #f0ecf8; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+  .tag { display: inline-block; background: #7830b0; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 0.75em; margin-right: 4px; }
+  .tag-green { background: #50a050; }
+  .tag-orange { background: #d08020; }
+  .tag-red { background: #c050a0; }
+  .tag-blue { background: #3070b0; }
+  code { font-family: Menlo, monospace; background: #f0ecf8; padding: 1px 5px; border-radius: 2px; font-size: 0.9em; }
+  pre { background: #2d2040; color: #e8e0f8; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.84em; line-height: 1.5; }
+  .check { color: #50a050; font-weight: bold; }
+  .warn { color: #c050a0; font-weight: bold; }
+  .decide { background: #fff8e0; border-left: 4px solid #d08020; padding: 10px 14px; margin: 12px 0; border-radius: 4px; }
+  .decide-title { color: #b07020; font-weight: bold; }
+  ul li { margin: 4px 0; }
+  .kw { color: #3070b0; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<h1>ComforTool Round0011 — 执行计划</h1>
+<p><strong>日期:</strong> 2026-07-17 &nbsp;|&nbsp; <strong>版本:</strong> V1.0 &nbsp;|&nbsp; <strong>状态:</strong> 待确认</p>
+
+<h2>需求概览</h2>
+<table>
+  <tr><th>#</th><th>需求</th><th>类别</th></tr>
+  <tr><td>1</td><td>参考工程约束，建立自己的备份脚本 <code>backup.sh</code></td><td><span class="tag tag-green">基建</span></td></tr>
+  <tr><td>2</td><td>通信接口增加选项：支持 <strong>COM</strong> 与 <strong>USB</strong>，USB 走 <strong>HID 协议</strong></td><td><span class="tag tag-blue">架构</span></td></tr>
+  <tr><td>3</td><td>参照 Sw01 协议，<strong>帧头调整</strong>，大部分逻辑不变</td><td><span class="tag tag-red">协议</span></td></tr>
+  <tr><td>4</td><td>仅追加 <strong>15693 协议</strong> 与 <strong>HID 分片协议</strong>；15693 先支持，功能后续触发</td><td><span class="tag">新增</span></td></tr>
+  <tr><td>5</td><td>升级逻辑：USB 上进入 BOOT 后<strong>自动重连 USB</strong></td><td><span class="tag tag-orange">逻辑</span></td></tr>
+</table>
+
+<h2>当前代码现状分析</h2>
+<ul>
+  <li><strong>传输层:</strong> 仅有 <span class="file">src/SerialPortManager.cpp</span>（基于 <code>QSerialPort</code>），无任何 USB/HID 支持，MainWindow 全程硬编码依赖 <code>m_serialManager</code>。</li>
+  <li><strong>帧格式:</strong> <span class="file">src/ProtocolParser.cpp</span> 当前使用帧头 <code>0x44 0x41</code>("DA") 与 <strong>MPEG-2 CRC32</strong>(poly=0x04C11DB7, 无反射, 无最终 XOR)。这是旧 AD01 协议。</li>
+  <li><strong>Sw01 新协议:</strong> 帧头 <code>0x53 0x77</code>("Sw")，<strong>IEEE 802.3 CRC32</strong>(poly=0xEDB88320 反射, init/xor=0xFFFFFFFF)，FC 码与升级流程、设备信息解析与旧版一致。</li>
+  <li><strong>USB HID:</strong> VID 0x5377 / PID 0x5378，报告 ID = 0x02，64B 包，EP1 IN / EP2 OUT。App 与 Boot 共用同一 VID:PID。本机已通过 Homebrew 安装 <code>hidapi 0.14.0</code>（含 CMake config 与 pkg-config）。</li>
+  <li><strong>15693:</strong> FC=0x15，子命令 0x00~0x08，响应统一带 <code>[seq][total]</code> 分片头；当前代码完全无此能力。</li>
+  <li><strong>升级流程:</strong> <span class="file">src/MainWindow.cpp</span> 中 <code>startUpgrade</code> 仅按串口流程：握手→进入 Boot→轮询握手→数据→校验→执行。进入 Boot 后假设串口保持，对 USB 重枚举无处理。</li>
+  <li><strong>备份:</strong> 仅有 <code>log_change.sh</code>/<code>watch_backup.sh</code> 做 rsync 同步，<strong>无 Round 轮转全量快照脚本</strong>，不符合全局 CLAUDE.md 约束。</li>
+</ul>
+
+<h2>关键决策点（需确认）</h2>
+
+<div class="decide">
+  <div class="decide-title">决策 A — CRC32 算法是否一并改为 IEEE 802.3？</div>
+  <p>需求 3 只字面提及"帧头调整"，但 Sw01 协议文档明确帧校验为 <strong>IEEE 802.3</strong>(poly=0xEDB88320 反射)。若设备固件已按 Sw01 实现，工具必须用相同 CRC，否则所有帧校验失败、无法通信。</p>
+  <p><strong>本计划方案:</strong> <span class="kw">同时</span>更新帧头(→0x53 0x77)与 CRC32(→IEEE 802.3)，含 <code>calcBindVerify</code>(改为 Boot 文档的 <code>Crc32CalcReflect</code>：反射 CRC + UID 哈希后缀)。<span class="warn">这是对旧 AD01 设备的 breaking change</span>，旧设备不再兼容。若你的设备仍用 MPEG-2，请否决此项并告知。</p>
+</div>
+
+<div class="decide">
+  <div class="decide-title">决策 B — USB HID 依赖与平台</div>
+  <p>采用 <code>hidapi</code> 跨平台库。macOS 本机已具备(Homebrew)。CMake 新增选项 <code>COMFORTOOL_ENABLE_USB</code>(默认 ON)：<br>
+  - ON 时 <code>find_package(hidapi)</code>，链接 <code>hidapi::hidapi</code>；找不到则配置报错并给出安装提示。<br>
+  - OFF 时仅编译 COM 串口版，USB 选项在 UI 隐藏。<br>
+  Windows 端需通过 vcpkg 安装 hidapi(<code>vcpkg install hidapi</code>)或手动放置；计划在 <code>build_win.bat</code> 补充说明。</p>
+</div>
+
+<div class="decide">
+  <div class="decide-title">决策 C — USB 升级固件分片大小</div>
+  <p>Sw01 文档存在矛盾：App §2 称"单包 data ≤ 56B"，但 64B 包剥报告 ID 后帧体 ≤ 63B(含 4B CRC)，反推 data ≤ 52B。<strong>本计划取保守值 48B/包</strong>（FC_FW_DATA 的 data = seq2+off2+fwdata，fwdata ≤ 48）。设备按更小包接收无副作用，可后续按实测上调。</p>
+</div>
+
+<div class="decide">
+  <div class="decide-title">决策 D — 15693 本轮范围</div>
+  <p>"先支持、功能后续触发" → 本轮只做 <span class="kw">协议层</span>：在 ProtocolParser 增加 FC=0x15 组帧/解析 + 分片重组。不新增 RFID 操作按钮；用户可通过现有"通信调试"面板(填 FC=0x15 + 子命令 hex 参数)手动触发验证。</p>
+</div>
+
+<div class="decide">
+  <div class="decide-title">决策 E — 备份路径</div>
+  <p>项目 CLAUDE.md 指定 <code>/Volumes/Untitled 1/Files/BackupArea/ComforTool</code>(回退 <code>/Users/swnw/Documents/BackupArea</code>)。备份脚本按此路径实现 Round 轮转全量快照，而非全局约束的 <code>/Volumes/Record/Person Code/...</code>。以项目专属规则为准。</p>
+</div>
+
+<h2>详细执行计划</h2>
+
+<!-- Task 1 -->
+<div class="task">
+<h3>Task 1: 备份脚本 backup.sh <span class="tag tag-green">基建</span></h3>
+<p><strong>目标:</strong> 工程根新增 <code>backup.sh</code>，实现全局 CLAUDE.md 约束的 Round 轮转全量快照备份。</p>
+<h4>1.1 脚本规格</h4>
+<ul>
+  <li>用法：<code>./backup.sh "本轮变更说明"</code></li>
+  <li>备份根：<code>/Volumes/Untitled 1/Files/BackupArea/ComforTool</code>，不可访问则回退 <code>/Users/swnw/Documents/BackupArea/ComforTool</code></li>
+  <li>快照目录：<code>Round_NNN_YYYYMMDD_HHMMSS</code>，编号 = 当前最大编号 +1</li>
+  <li><strong>白名单</strong>全量复制（保证 ≤500MB）：<code>src/ res/ docs/ icon/ issue/ deploy/ Agent/</code> + 根文件 <code>CMakeLists.txt CLAUDE.md backup.sh build_win.bat log_change.sh watch_backup.sh</code></li>
+  <li><strong>排除</strong>：<code>build/ Qt/ .venv/ TrashCan/ .claude/ .vscode/</code>、<code>.DS_Store</code>、<code>aqtinstall.log</code></li>
+  <li>轮转：Round 总数 &gt; 32 时，<code>mv</code> 编号最小的 Round 到 <code>TrashCan/</code>（可恢复删除，遵守规则1，不用 rm）</li>
+  <li>单层 &gt; 500MB 时输出告警并列最大子目录</li>
+  <li>已有扁平备份迁移：若备份根存在但无 <code>Round_*</code>，先把内容移入 <code>Round_001_&lt;时间戳&gt;</code></li>
+</ul>
+<h4>1.2 Changelog</h4>
+<p>在 <code>&lt;备份根&gt;/Changelog/Changelog.log</code> 追加一条（独立于 Round 目录，不参与轮转）：</p>
+<pre>[YYYY-MM-DD HH:MM:SS] Round NNN
+变更说明: ...
+备份范围: 白名单目录 + 根脚本 + 全局CLAUDE.md副本
+快照路径: /Volumes/Untitled 1/Files/BackupArea/ComforTool/Round_NNN_...
+快照大小: XXM  (<=500M OK / >500M 超限)
+轮转动作: 无 / 删除 Round_KKK
+验证: 复制项=N 跳过=M / 源-目的文件计数对比
+---</pre>
+<h4>影响文件:</h4>
+<table><tr><th>文件</th><th>改动</th></tr>
+<tr><td><span class="file">backup.sh</span> <span class="tag">新增</span></td><td>全新脚本，工程根，可执行权限</td></tr></table>
+</div>
+
+<!-- Task 2 -->
+<div class="task">
+<h3>Task 2: 传输层抽象 + USB HID 支持 <span class="tag tag-blue">架构</span></h3>
+<p><strong>目标:</strong> 引入 <code>ITransport</code> 抽象，串口与 HID 共用同一接口；UI 增加接口选择。</p>
+
+<h4>2.1 新增 ITransport 接口</h4>
+<pre>src/ITransport.h
+class ITransport : public QObject {
+    Q_OBJECT
+public:
+    virtual bool open(const QVariantMap &params) = 0;
+    virtual void close() = 0;
+    virtual bool isOpen() const = 0;
+    virtual QString name() const = 0;       // 端口名/设备路径
+    virtual QString errorString() const = 0;
+    virtual void writeData(const QByteArray &) = 0;
+    virtual bool waitForBytesWritten(int) = 0;
+    virtual QByteArray readAll() = 0;
+signals:
+    void dataReceived();
+    void portError();
+    void opened();
+    void closed();
+};</pre>
+
+<h4>2.2 SerialPortManager 改为实现 ITransport</h4>
+<p>保留原有行为，<code>openPort</code> 改为 <code>open(params)</code>（从 params 取 name/baud/databits/stopbits/parity），新增 <code>name()</code>。信号名统一为 <code>opened/closed/dataReceived/portError</code>（原 <code>portOpened/portClosed</code> 改名）。</p>
+
+<h4>2.3 新增 HidManager</h4>
+<pre>src/HidManager.h / .cpp  (依赖 hidapi)
+- open(params): params["path"] 或 [vid,pid] → hid_open_path
+  · 写：buf[0]=0x02(Report ID) + 帧体(≤63B)，pad 至 64，hid_write
+  · 读：独立 QThread 轮询 hid_read_timeout(50ms)，收到 64B 且 buf[0]==0x02
+         → 剥报告 ID → 累积到内部缓冲 → emit dataReceived()
+  · set_nonblocking(0) 阻塞读，由线程驱动
+- close(): 停线程 + hid_close
+- readAll(): 返回并清空累积缓冲
+- 枚举静态方法 enumerate(vid,pid) → 返回 [{path, manufacturer, product, serial}]</pre>
+
+<h4>2.4 UI 接口选择</h4>
+<p>握手栏新增 <code>m_ifaceCombo</code>（"COM 串口" / "USB(HID)"）：</p>
+<ul>
+  <li>COM：显示端口下拉+刷新+波特率/数据位/停止位/校验（现状）</li>
+  <li>USB：端口下拉改为 HID 设备列表（VID 0x5377:0x5378，显示 厂商/产品/序列号），隐藏波特率等串口专属项</li>
+  <li>切换接口时清空并重新枚举；打开按钮按当前接口打开对应 transport</li>
+</ul>
+
+<h4>2.5 MainWindow 切换为 ITransport*</h4>
+<ul>
+  <li>新增成员 <code>SerialPortManager *m_serialManager</code>、<code>HidManager *m_hidManager</code>、<code>ITransport *m_transport</code>（指向当前激活者）</li>
+  <li><code>onReadyRead/sendData/waitForResponse/onDebugPack</code> 及升级流程全部改用 <code>m_transport</code></li>
+  <li><code>onOpen</code> 按 <code>m_ifaceCombo</code> 构造 params 并打开对应 transport</li>
+</ul>
+
+<h4>2.6 CMake</h4>
+<pre>option(COMFORTOOL_ENABLE_USB "Enable USB HID transport" ON)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets SerialPort)
+if(COMFORTOOL_ENABLE_USB)
+    find_package(hidapi CONFIG QUIET) 或 pkg_check_modules(HIDAPI hidapi)
+    target_compile_definitions(ComforTool PRIVATE COMFORTOOL_ENABLE_USB=1)
+    target_link_libraries(ComforTool PRIVATE hidapi::hidapi)  # 或 ${HIDAPI_LIBRARIES}
+    target_sources(ComforTool PRIVATE src/HidManager.cpp src/ITransport.h)
+endif()</pre>
+<p>未找到 hidapi 且开启 USB 时，<code>message(FATAL_ERROR ...)</code> 给出安装提示。</p>
+</div>
+
+<!-- Task 3 -->
+<div class="task">
+<h3>Task 3: 帧头与 CRC32 对齐 Sw01 协议 <span class="tag tag-red">协议</span></h3>
+<p><strong>目标:</strong> ProtocolParser 帧头 → 0x53 0x77，CRC32 → IEEE 802.3，BindVerify → 反射 CRC+后缀。</p>
+<h4>3.1 改动点</h4>
+<table>
+<tr><th>位置</th><th>当前</th><th>改为</th></tr>
+<tr><td>makeFrame 帧头</td><td>0x44 0x41</td><td>0x53 0x77</td></tr>
+<tr><td>parseFrame 帧头校验</td><td>0x44 0x41</td><td>0x53 0x77</td></tr>
+<tr><td>crc32()</td><td>MPEG-2 poly 0x04C11DB7, 无反射, 无最终XOR</td><td>IEEE 802.3 反射 poly 0xEDB88320, init=0xFFFFFFFF, 最终 XOR 0xFFFFFFFF</td></tr>
+<tr><td>calcBindVerify()</td><td>MPEG-2 串联 UID 哈希</td><td>反射 CRC(固件 + UID哈希小端4B 后缀) = Crc32CalcReflect</td></tr>
+<tr><td>ProtocolParser.h 注释</td><td>0x44 0x41</td><td>0x53 0x77 + IEEE 802.3 说明</td></tr>
+</table>
+<h4>3.2 新 CRC32 实现</h4>
+<pre>quint32 ProtocolParser::crc32(const quint8 *data, int len) {
+    quint32 crc = 0xFFFFFFFF;
+    for (int i = 0; i &lt; len; i++) {
+        crc ^= data[i];
+        for (int j = 0; j &lt; 8; j++)
+            crc = (crc &gt;&gt; 1) ^ (0xEDB88320 & (-(crc & 1)));
+    }
+    return crc ^ 0xFFFFFFFF;
+}</pre>
+<h4>3.3 不变项</h4>
+<p>FC 码(0x01/0x02/0x03/0x04/0x05/0x06/0x07)、响应 FC=Req^0xFF、length=1+N+4、设备信息 77B 解析、升级流程帧序——均保持不变。</p>
+</div>
+
+<!-- Task 4 -->
+<div class="task">
+<h3>Task 4: 15693 协议 + HID 分片（协议层）<span class="tag">新增</span></h3>
+<p><strong>目标:</strong> ProtocolParser 增加 FC=0x15 组帧/解析 + 响应分片重组。<strong>不新增 UI 按钮</strong>，经"通信调试"面板手动触发。</p>
+
+<h4>4.1 常量与子命令</h4>
+<pre>FC_RFID_15693 = 0x15
+RFID_SUB_INVENTORY=0x00 READ_BLOCK=0x01 WRITE_BLOCK=0x02 DSFID=0x03
+EAS=0x04 LOCK_BLOCK=0x05 STAY_QUIET=0x06 WRITE_AFI=0x07 LOCK_AFI=0x08
+RFID_BLK_SIZE=4  RFID_SINGLE_PKT_MAX=56  RFID_FRAG_PAYLOAD_MAX=53</pre>
+
+<h4>4.2 组帧方法</h4>
+<pre>QByteArray makeRfidFrame(quint8 devAddr, quint8 subCmd, const QByteArray &params) const;
+// data = [subCmd] + params；对 FC=0x15 调 makeFrame(devAddr, 0x15, data)
+// 便捷重载：
+QByteArray makeRfidInventory(quint8 devAddr) const;                                   // [0x00]
+QByteArray makeRfidReadBlock(quint8 devAddr, const QByteArray &uid8, quint8 addr, quint8 count) const;
+QByteArray makeRfidWriteBlock(quint8 devAddr, const QByteArray &uid8, quint8 addr, quint8 count, const QByteArray &blkData) const;
+// ... DSFID/EAS/Lock/StayQuiet/WriteAFI/LockAFI 同理</pre>
+
+<h4>4.3 响应解析 + 分片重组</h4>
+<pre>struct RfidResponse {
+    quint8 subCmd; quint8 seq; quint8 total; quint8 result;
+    QByteArray payload; bool valid; QString error;
+};
+RfidResponse parseRfidResponse(const QByteArray &data) const;
+
+// 分片重组器（按 subCmd 缓存，收齐 total 片后合并 payload）
+class RfidFragReassembler {
+    // key = devAddr+subCmd，存已收片；seq 到 total-1 全到则合并
+    bool addFragment(const RfidResponse &frag, QByteArray &outFullPayload);
+    void reset(quint8 devAddr, quint8 subCmd);
+};</pre>
+<p>非 0x01 子命令 <code>total</code> 必须为 1，否则 <code>RFID_FRAG_ERR</code>。读块响应片0含 <code>[result][data…]</code>，后续片纯 data 续传，重组后去掉中间 <code>[seq][total]</code> 头。</p>
+
+<h4>4.4 错误码</h4>
+<p>新增 <code>rfidResultToString(quint8)</code>：RFID_OK..RFID_FRAG_ERR(0x00..0x0B)。</p>
+<h4>影响文件:</h4>
+<table><tr><th>文件</th><th>改动</th></tr>
+<tr><td><span class="file">src/ProtocolParser.h/.cpp</span></td><td>新增 15693 组帧/解析/分片重组/错误码</td></tr>
+<tr><td><span class="file">src/RfidFragReassembler.h/.cpp</span> <span class="tag">新增</span></td><td>分片重组器（可选合并进 ProtocolParser）</td></tr></table>
+</div>
+
+<!-- Task 5 -->
+<div class="task">
+<h3>Task 5: 升级流程适配传输抽象 + USB 进 Boot 后自动重连 <span class="tag tag-orange">逻辑</span></h3>
+<p><strong>目标:</strong> 升级流程改用 <code>ITransport*</code>；USB 模式下进入 Boot 后重枚举并自动重连 HID 设备。</p>
+
+<h4>5.1 升级 helper 改签名</h4>
+<pre>int  waitBootHandshake(MainWindow*, ITransport*, quint8&, quint8&, quint32&);
+bool enterBoot(MainWindow*, ITransport*, quint8);
+bool sendFirmwareChunk(MainWindow*, ITransport*, ProtocolParser*, quint8, quint16, int, const QByteArray&, int);
+bool checkUpgradeDoneAfterExec(MainWindow*, ITransport*);</pre>
+
+<h4>5.2 分片大小按传输类型</h4>
+<pre>int chunkSize = (m_transport == m_hidManager) ? 48 : 512;  // USB 保守 48B/包</pre>
+
+<h4>5.3 USB 进 Boot 重连流程</h5>
+<pre>// enterBoot 发出 FC=0x02 后，设备软复位 → USB 重新枚举
+if (transport 是 HID) {
+    m_hidManager->close();             // 旧 handle 失效
+    for (i = 0; i &lt; 20; ++i) {          // 最多 10s 重枚举
+        QThread::msleep(500);
+        枚举 VID 0x5377:0x5378 设备;
+        if (找到) { m_hidManager->open(...); break; }
+    }
+    if (!m_hidManager->isOpen()) → 报错退出;
+}
+// 之后照常握手确认 layer==0 → 继续升级流程</pre>
+<p>COM 模式保持现状（端口常驻，复用同一 handle，仅轮询握手）。升级完成/失败后的最终握手检查同样在 USB 模式下处理重枚举。</p>
+
+<h4>5.4 waitForResponse 兼容 HID</h4>
+<p>现有 <code>waitForResponse</code> 依赖 <code>m_rxBuffer</code> 增长判断，HID 经线程 <code>dataReceived</code> 同样 append 到 <code>m_rxBuffer</code>，逻辑无需改动；仅确保 HID 单包即一帧（63B 内为完整帧），帧间间隔判定仍适用。</p>
+</div>
+
+<h2>文件影响总览</h2>
+<table>
+<tr><th>文件</th><th>类型</th><th>改动摘要</th></tr>
+<tr><td><span class="file">backup.sh</span></td><td>新增</td><td>Round 轮转全量快照备份脚本</td></tr>
+<tr><td><span class="file">CMakeLists.txt</span></td><td>修改</td><td>hidapi 依赖、COMFORTOOL_ENABLE_USB 选项、新源文件</td></tr>
+<tr><td><span class="file">src/ITransport.h</span></td><td>新增</td><td>传输抽象接口</td></tr>
+<tr><td><span class="file">src/SerialPortManager.h/.cpp</span></td><td>修改</td><td>实现 ITransport，信号名统一</td></tr>
+<tr><td><span class="file">src/HidManager.h/.cpp</span></td><td>新增</td><td>hidapi 封装 + 读线程</td></tr>
+<tr><td><span class="file">src/ProtocolParser.h/.cpp</span></td><td>修改</td><td>帧头 0x53 0x77、IEEE 802.3 CRC、BindVerify、15693 组帧/解析/分片</td></tr>
+<tr><td><span class="file">src/RfidFragReassembler.h/.cpp</span></td><td>新增</td><td>15693 响应分片重组器</td></tr>
+<tr><td><span class="file">src/MainWindow.h/.cpp</span></td><td>修改</td><td>接口选择 UI、m_transport 切换、升级流程 USB 重连、helper 改 ITransport*</td></tr>
+<tr><td><span class="file">build_win.bat</span></td><td>修改</td><td>补充 Windows hidapi(vcpkg) 安装说明</td></tr>
+</table>
+
+<h2>执行顺序</h2>
+<ol>
+  <li><strong>备份</strong>：先执行 <code>./backup.sh "Round0011 变更前快照"</code>（Task 1 脚本写好后立即备份本轮变更前状态）</li>
+  <li>Task 3（协议帧头/CRC）— 影响最广，先改并自测组帧/解析</li>
+  <li>Task 2（传输抽象 + HID + UI）</li>
+  <li>Task 5（升级流程 + USB 重连）</li>
+  <li>Task 4（15693 协议层）</li>
+  <li><strong>构建验证</strong>：macOS cmake 配置 + 编译通过</li>
+  <li><strong>再次备份</strong> + 写 Report.html</li>
+</ol>
+
+<h2>风险与注意事项</h2>
+<ul>
+  <li class="warn">CRC/帧头变更使旧 AD01 设备失联，仅适配 Sw01 协议设备（见决策 A）。</li>
+  <li>hidapi 为外部依赖；CI/打包机若未装则需 <code>-DCOMFORTOOL_ENABLE_USB=OFF</code> 走 COM-only。</li>
+  <li>HID 读线程需正确停止与资源释放，避免退出时 hang；写路径 pad 至 64B。</li>
+  <li>USB 升级中设备重枚举有时间窗（数百 ms~数秒），重连重试上限 10s。</li>
+  <li>遵守工程约束：全程不用 <code>rm -rf</code>，删除走 <code>TrashCan/</code>；备份轮转删旧 Round 也用 <code>mv</code> 至 TrashCan。</li>
+  <li>15693 本轮无真实卡片可联测，仅保证组帧/解析逻辑正确性与编译通过，实卡验证留待后续触发。</li>
+</ul>
+
+<h2>验证标准</h2>
+<ul>
+  <li class="check">macOS 下 <code>cmake -B build -S .</code> 与 <code>cmake --build build</code> 通过</li>
+  <li class="check">UI 可切换 COM/USB；COM 模式行为与现版一致；USB 模式可枚举并打开 VID 0x5377:0x5378 设备</li>
+  <li class="check">帧头 0x53 0x77、IEEE 802.3 CRC 组帧/校验自洽（自带用例验算）</li>
+  <li class="check">"通信调试"面板填 FC=0x15 + 子命令参数可组出正确 15693 帧</li>
+  <li class="check"><code>backup.sh "说明"</code> 能生成 Round 快照 + Changelog，且 ≤500MB</li>
+</ul>
+
+<p style="margin-top:28px;color:#8870a8;font-size:0.9em;">请确认以上计划（尤其决策 A~E）。确认后我将按执行顺序实施，完成后生成 <code>Report.html</code> 供审查。如对某项决策需调整，请直接指出。</p>
+
+</body>
+</html>

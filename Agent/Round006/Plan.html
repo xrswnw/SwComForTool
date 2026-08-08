@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ComforTool Round006 实施计划</title>
+<style>
+  :root { --purple: #7830b0; --pink: #c050a0; --bg: #f0eaf8; --text: #503070; --light: #e8e0f4; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; padding: 20px; }
+  h1 { text-align: center; color: var(--purple); font-size: 1.8em; margin-bottom: 8px; }
+  .ver { text-align: center; color: #8870a8; font-size: 0.9em; margin-bottom: 24px; }
+  h2 { color: var(--purple); border-bottom: 2px solid #c8b8e0; padding-bottom: 6px; margin: 28px 0 14px; font-size: 1.3em; }
+  h3 { color: #8850a0; margin: 18px 0 10px; font-size: 1.1em; }
+  h4 { color: #a070c0; margin: 14px 0 8px; }
+  .card { background: #fff; border: 1px solid #d8d0e8; border-radius: 8px; padding: 16px 20px; margin: 10px 0; }
+  .card-title { font-weight: bold; color: var(--purple); margin-bottom: 8px; font-size: 1.05em; }
+  .tag { display: inline-block; background: var(--purple); color: #fff; padding: 2px 8px; border-radius: 3px; font-size: 0.75em; margin-left: 6px; vertical-align: middle; }
+  .tag-pink { background: var(--pink); }
+  .tag-green { background: #50a050; }
+  .tag-blue { background: #3070c0; }
+  .tag-orange { background: #d08020; }
+  ul { padding-left: 20px; }
+  li { margin: 4px 0; }
+  code { background: #e8e0f4; padding: 1px 5px; border-radius: 3px; font-size: 0.9em; font-family: Menlo, monospace; }
+  pre { background: #2a1f3d; color: #e0d0f0; padding: 14px; border-radius: 6px; overflow-x: auto; margin: 10px 0; font-size: 0.85em; line-height: 1.5; }
+
+  /* UI Mockup styles */
+  .mockup { background: #f8f4ff; border: 2px solid #c8b8e0; border-radius: 8px; padding: 10px; margin: 12px 0; font-family: -apple-system, sans-serif; }
+  .mockup-group { border: 1px solid #d0c4e0; border-radius: 5px; margin: 6px 0; padding: 6px 10px; background: #f4f0fa; }
+  .mockup-group-title { font-weight: bold; color: var(--purple); font-size: 0.85em; margin-bottom: 4px; }
+  .mockup-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 32px; padding: 3px 0; }
+  .mockup-row.center { justify-content: center; }
+  .m-btn { background: #e0d4f0; border: 1px solid #c8b8e0; border-radius: 4px; padding: 3px 10px; font-size: 0.8em; color: #503070; display: inline-flex; align-items: center; }
+  .m-btn-primary { background: #7830b0; color: #fff; font-weight: bold; }
+  .m-btn-pink { background: #c050a0; color: #fff; font-weight: bold; }
+  .m-btn-green { background: #50a050; color: #fff; font-weight: bold; }
+  .m-input { background: #fff; border: 1px solid #c8b8e0; border-radius: 3px; padding: 2px 6px; font-size: 0.8em; color: #503070; min-width: 50px; }
+  .m-input-sm { min-width: 30px; max-width: 60px; text-align: center; }
+  .m-label { font-size: 0.8em; color: #7850a0; }
+  .m-combo { background: #e8e0f4; border: 1px solid #c8b8e0; border-radius: 4px; padding: 2px 8px; font-size: 0.8em; color: #503070; }
+  .m-check { font-size: 0.8em; color: #7850a0; }
+  .m-status { font-size: 0.75em; color: #b0a0c8; }
+  .m-splitter { height: 3px; background: #d8d0e8; border-radius: 1px; margin: 6px 0; }
+  .m-log { background: #f8f4ff; border: 1px solid #d8d0e8; border-radius: 4px; height: 80px; font-family: Menlo, monospace; font-size: 0.75em; color: #503070; padding: 4px 8px; overflow: hidden; }
+  .m-send { background: #f4f0fa; border: 1px solid #d8d0e8; border-radius: 4px; height: 40px; font-family: Menlo, monospace; font-size: 0.75em; color: #503070; padding: 4px 8px; }
+  .m-progress { height: 10px; background: #e8e0f4; border: 1px solid #c8b8e0; border-radius: 4px; overflow: hidden; }
+  .m-progress-bar { height: 100%; background: #7830b0; border-radius: 3px; width: 0%; }
+  .m-ver-box { border: 1px solid #d0c4e0; border-radius: 5px; padding: 4px 8px; background: #f4f0fa; }
+  .m-ver-input { background: #fff; border: 1px solid #c8b8e0; border-radius: 3px; padding: 2px 4px; font-family: Menlo, monospace; font-size: 0.8em; color: #503070; width: 60px; text-align: center; display: block; margin: 2px auto; }
+  .m-debug-ext { border: 1px dashed #50a050; border-radius: 5px; padding: 6px 10px; background: #f0faf0; margin-left: 8px; }
+
+  .diff-add { color: #2a8a2a; background: #e8f5e8; padding: 0 3px; border-radius: 2px; }
+  .diff-del { color: #c03030; background: #f5e8e8; padding: 0 3px; border-radius: 2px; text-decoration: line-through; }
+
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th { background: #e0d4f0; color: var(--purple); padding: 8px 12px; text-align: left; font-size: 0.9em; }
+  td { padding: 6px 12px; border-bottom: 1px solid #e8e0f4; font-size: 0.9em; }
+  tr:hover td { background: #f4f0fa; }
+
+  .note { background: #fff8e0; border: 1px solid #e0d080; border-radius: 5px; padding: 10px 14px; margin: 10px 0; font-size: 0.9em; }
+  .note::before { content: "⚠ "; color: #d08020; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<h1>ComforTool Round006 实施计划</h1>
+<div class="ver">V1.1 · 2026-05-29 · 等待确认</div>
+
+<!-- ============================================================ -->
+<h2>一、当前布局 (Before)</h2>
+
+<div class="mockup">
+  <!-- 握手栏 -->
+  <div class="mockup-group">
+    <div class="mockup-group-title">握手栏</div>
+    <div class="mockup-row">
+      <span class="m-label">通信接口:</span>
+      <span class="m-combo">COM1</span>
+      <span class="m-btn">刷新</span>
+      <span class="m-label">波特率:</span>
+      <span class="m-combo">115200</span>
+      <span class="m-label">数据位:</span>
+      <span class="m-combo">8</span>
+      <span class="m-label">停止位:</span>
+      <span class="m-combo">1</span>
+      <span class="m-label">校验:</span>
+      <span class="m-combo">无</span>
+      <span class="m-btn m-btn-primary">打开</span>
+      <span class="m-status">未连接</span>
+    </div>
+  </div>
+
+  <!-- 功能栏 -->
+  <div class="mockup-group" style="min-height:70px">
+    <div class="mockup-group-title">功能栏</div>
+    <div class="mockup-row">
+      <span style="color:#b0a0c8;font-style:italic;flex:1;text-align:center">功能模块预留区域</span>
+      <span class="m-btn m-btn-pink">更新固件</span>
+      <div class="m-ver-box" style="margin-left:12px">
+        <div style="font-weight:bold;font-size:0.8em;color:#7830b0;margin-bottom:2px">版本信息</div>
+        <span class="m-ver-input">0x01</span>
+        <span class="m-ver-input">AD01 V1.0</span>
+      </div>
+      <span class="m-btn m-btn-primary" style="margin-left:12px">握手</span>
+      <span class="m-status">● 设备未连接</span>
+    </div>
+  </div>
+
+  <!-- 进度条 -->
+  <div style="display:flex;gap:8px;align-items:center;padding:2px 0">
+    <div class="m-progress" style="flex:1"><div class="m-progress-bar"></div></div>
+    <span style="color:#8870a8;font-size:0.75em">升级状态</span>
+  </div>
+
+  <div class="m-splitter"></div>
+
+  <!-- 日志区 -->
+  <div>
+    <div class="m-log">[TX] 44 41 01 00 05 00 01 37 F7 CB AC<br>[RX] 44 41 01 00 0E 00 FE ...<br>[SYS] 握手成功</div>
+    <div class="mockup-row" style="justify-content:space-between">
+      <span style="font-weight:bold;font-size:0.85em">日志区</span>
+      <span style="display:flex;gap:6px;align-items:center">
+        <span class="m-check">☐ Hex显示</span>
+        <span class="m-btn">清空</span>
+        <span class="m-btn">保存</span>
+      </span>
+    </div>
+  </div>
+
+  <div class="m-splitter"></div>
+
+  <!-- 发送区 -->
+  <div>
+    <div class="mockup-row" style="justify-content:space-between">
+      <span style="font-weight:bold;font-size:0.85em">发送区</span>
+      <span style="display:flex;gap:6px;align-items:center">
+        <span class="m-check">☐ Hex发送</span>
+        <span class="m-btn m-btn-primary">发送</span>
+      </span>
+    </div>
+    <div class="m-send">用户输入数据...</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<h2>二、目标布局 (After)</h2>
+
+<div class="mockup">
+  <!-- 握手栏 -->
+  <div class="mockup-group">
+    <div class="mockup-group-title">握手栏</div>
+    <div class="mockup-row">
+      <span class="m-label">通信接口:</span>
+      <span class="m-combo">COM1</span>
+      <span class="m-btn">刷新</span>
+      <span class="m-label">波特率:</span>
+      <span class="m-combo">115200</span>
+      <span class="m-label">数据位:</span>
+      <span class="m-combo">8</span>
+      <span class="m-label">停止位:</span>
+      <span class="m-combo">1</span>
+      <span class="m-label">校验:</span>
+      <span class="m-combo">无</span>
+      <span class="m-btn m-btn-primary">打开</span>
+      <span class="m-status">未连接</span>
+      <span style="flex:1"></span>
+      <span class="m-label" style="font-size:0.75em;color:#a080c0">ComforToolV1.1</span>
+    </div>
+  </div>
+
+  <!-- 功能栏 (NEW - 双行布局) -->
+  <div class="mockup-group" style="min-height:90px">
+    <div class="mockup-group-title">功能栏</div>
+    <div style="display:flex;align-items:center;gap:12px;min-height:40px">
+      <!-- 左侧列：上行 通信调试+固件更新 -->
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start">
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="m-btn m-btn-green">通信调试</span>
+          <span class="m-btn m-btn-pink">更新固件</span>
+        </div>
+        <!-- 左侧列：下行 握手+设备状态 -->
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="m-btn m-btn-primary">握手</span>
+          <span class="m-status">● 设备未连接</span>
+        </div>
+      </div>
+
+      <!-- 中间弹性间距 -->
+      <span style="flex:1"></span>
+
+      <!-- 版本信息 (居中) -->
+      <div class="m-ver-box">
+        <div style="font-weight:bold;font-size:0.8em;color:#7830b0;margin-bottom:2px">版本信息</div>
+        <span class="m-ver-input">0x01</span>
+        <span class="m-ver-input">AD01 V1.0</span>
+      </div>
+
+      <!-- 右侧弹性间距 -->
+      <span style="flex:1"></span>
+    </div>
+  </div>
+
+  <!-- 通信调试展开面板 (点击通信调试后，在功能栏下方展开) -->
+  <div class="m-debug-ext" style="display:none;margin:0 10px" id="debugExtV2">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <span style="font-weight:bold;font-size:0.85em;color:#50a050">通信调试面板</span>
+      <span class="m-btn" style="font-size:0.75em">✕ 关闭</span>
+    </div>
+    <div class="mockup-row">
+      <span class="m-label">地址:</span>
+      <span class="m-input m-input-sm">0x01</span>
+      <span class="m-label">功能码:</span>
+      <span class="m-input m-input-sm">0x01</span>
+      <span class="m-label">超时:</span>
+      <span class="m-input m-input-sm">3000</span>
+      <span class="m-label">ms</span>
+      <span class="m-btn m-btn-primary">打包</span>
+      <span style="font-size:0.75em;color:#50a050">44 41 01 00 05 00 01 37 F7 CB AC</span>
+    </div>
+    <div class="mockup-row">
+      <span class="m-label">参数 (Hex,空格分隔):</span>
+      <span class="m-input" style="flex:1;min-width:200px">00 02 9B F0</span>
+    </div>
+  </div>
+
+  <!-- 进度条 -->
+  <div style="display:flex;gap:8px;align-items:center;padding:2px 0">
+    <div class="m-progress" style="flex:1"><div class="m-progress-bar"></div></div>
+    <span style="color:#8870a8;font-size:0.75em">升级状态</span>
+  </div>
+
+  <div class="m-splitter"></div>
+
+  <!-- 日志区 (简化：不解释帧含义, 超时提示) -->
+  <div>
+    <div class="m-log" style="color:#50a050">[RX] 44 41 01 00 0E 00 FE ...<br>[TX] 44 41 01 00 05 00 01 ...<br><span style="color:#c050a0">[SYS] ● 握手超时，无响应</span></div>
+    <div class="mockup-row" style="justify-content:space-between">
+      <span style="font-weight:bold;font-size:0.85em">日志区</span>
+      <span style="display:flex;gap:6px;align-items:center">
+        <span class="m-check">☐ Hex显示</span>
+        <span class="m-btn">清空</span>
+        <span class="m-btn">保存</span>
+      </span>
+    </div>
+  </div>
+
+  <div class="m-splitter"></div>
+
+  <!-- 发送区 (NEW：定时发送) -->
+  <div>
+    <div class="mockup-row" style="justify-content:space-between">
+      <span style="display:flex;gap:6px;align-items:center">
+        <span style="font-weight:bold;font-size:0.85em">发送区</span>
+        <span class="m-check">☐ 定时发送</span>
+        <span class="m-input m-input-sm">1000</span>
+        <span class="m-label">ms</span>
+      </span>
+      <span style="display:flex;gap:6px;align-items:center">
+        <span class="m-check">☐ Hex发送</span>
+        <span class="m-btn m-btn-primary">发送</span>
+      </span>
+    </div>
+    <div class="m-send">用户输入数据...</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<h2>三、需求逐项实施方案</h2>
+
+<!-- DEMAND 1 -->
+<div class="card">
+  <div class="card-title">需求1 · 发送区定时发送 <span class="tag">UI+逻辑</span></div>
+  <h4>变更点</h4>
+  <ul>
+    <li>发送区标题行左侧添加 <code>QCheckBox "定时发送"</code></li>
+    <li>旁边添加 <code>QSpinBox</code>，范围 100~60000 ms，默认 1000，步进 100</li>
+    <li>添加 <code>QTimer *m_timerSend</code> 成员</li>
+    <li>勾选定时发送 → 启动定时器，取消 → 停止定时器</li>
+    <li>定时器 timeout → 调用现有 <code>sendData()</code></li>
+    <li>串口关闭时，强制停止定时器并取消勾选</li>
+  </ul>
+  <h4>涉及文件</h4>
+  <ul>
+    <li><code>src/MainWindow.h</code> — 新增 <code>m_timerSendCheck</code>, <code>m_timerSendSpin</code>, <code>m_timerSend</code></li>
+    <li><code>src/MainWindow.cpp</code> — setupUI 发送区、connect 定时逻辑、updateConnectionState 关闭时停止</li>
+  </ul>
+</div>
+
+<!-- DEMAND 2 -->
+<div class="card">
+  <div class="card-title">需求2 · 串口状态联动锁定 <span class="tag">逻辑</span></div>
+  <h4>变更点</h4>
+  <ul>
+    <li><b>串口未打开</b>：功能区全禁用（握手按钮、地址框、更新按钮）、日志区禁用（清空/保存可用）、发送区全禁用</li>
+    <li><b>串口已打开</b>：解锁日志区、功能区握手按钮+地址输入框、发送区</li>
+    <li><b>校验版本通过 (m_funcUnlocked=true)</b>：解锁功能区其余组件（更新固件、通信调试按钮）</li>
+    <li>功能区版本信息框（地址框 m_verTopEdit、版本显示 m_verBottomEdit）在功能栏中居中（用 stretch 撑开两侧）</li>
+    <li>调整 <code>updateConnectionState()</code> 中各 widget 的 setEnabled 逻辑</li>
+    <li>调整 <code>enableFuncButtons()</code>，校验通过后额外启用通信调试按钮</li>
+  </ul>
+  <h4>涉及文件</h4>
+  <ul>
+    <li><code>src/MainWindow.cpp</code> — updateConnectionState、enableFuncButtons、setupUI布局调整</li>
+  </ul>
+</div>
+
+<!-- DEMAND 3 -->
+<div class="card">
+  <div class="card-title">需求3 · 版本信息指示 <span class="tag">配置</span></div>
+  <h4>变更点</h4>
+  <ul>
+    <li>CMakeLists.txt 中 <code>project(ComforTool VERSION 1.1.0 ...)</code></li>
+    <li>CMake 中添加 <code>configure_file</code> 生成 <code>src/Version.h</code>，包含 <code>#define COMFORTOOL_VERSION "V1.1"</code></li>
+    <li><code>main.cpp</code> 中 <code>app.setApplicationVersion(COMFORTOOL_VERSION)</code></li>
+    <li>窗口标题改为 <code>"ComforTool" + COMFORTOOL_VERSION</code>，如 "ComforToolV1.1"</li>
+    <li>握手栏右侧显示版本号标签</li>
+  </ul>
+  <h4>新增文件</h4>
+  <ul>
+    <li><code>src/Version.h.in</code> — 模板文件</li>
+  </ul>
+  <h4>涉及文件</h4>
+  <ul>
+    <li><code>CMakeLists.txt</code> — 版本号 + configure_file</li>
+    <li><code>src/main.cpp</code> — setApplicationVersion</li>
+    <li><code>src/MainWindow.cpp</code> — 窗口标题</li>
+  </ul>
+</div>
+
+<!-- DEMAND 4 -->
+<div class="card">
+  <div class="card-title">需求4 · 通信调试按钮 <span class="tag">UI</span></div>
+  <h4>变更点</h4>
+  <ul>
+    <li>功能栏左侧双列布局，上行放置"通信调试"和"更新固件"按钮</li>
+    <li>通信调试按钮默认禁用，校验版本通过后可用（见需求2）</li>
+    <li>点击后在功能栏下方独立展开通信调试面板（见需求5）</li>
+  </ul>
+</div>
+
+<!-- DEMAND 5 -->
+<div class="card">
+  <div class="card-title">需求5 · 通信调试面板 <span class="tag">UI+逻辑</span><span class="tag tag-pink">核心</span></div>
+  <h4>面板布局（点击"通信调试"后，在功能栏下方独立展开）</h4>
+  <ul>
+    <li><b>上行</b>：地址输入框(QLineEdit) · 功能码输入框(QLineEdit) · 超时输入框(QSpinBox, 默认3000ms) · 打包按钮 + 旁边文字展示组帧Hex结果</li>
+    <li><b>下行</b>：宽的参数输入框(QLineEdit, Hex空格分隔, 可为空)，参数长度限制：协议帧 Data字段最大长度 = 65535 - 1(FC) - 4(CRC) ≈ 65530 字节，实际限制取 512 字节</li>
+    <li><b>关闭按钮</b>：面板右上角 × 按钮，可单独关闭面板</li>
+  </ul>
+  <h4>打包逻辑</h4>
+  <ul>
+    <li>读取地址(1字节)、功能码(1字节)、超时时间、参数(Hex解析)</li>
+    <li>调用 <code>ProtocolParser::makeFrame(devAddr, fc, paramData)</code> 组帧</li>
+    <li>清空发送区输入框，将组帧结果填入发送区</li>
+    <li>在打包按钮旁文字展示组帧的Hex</li>
+  </ul>
+  <h4>实现方式</h4>
+  <ul>
+    <li>在功能栏 QGroupBox 下方插入 <code>m_debugPanel</code> (QFrame, 带边框)，默认隐藏</li>
+    <li>点击"通信调试" → <code>m_debugPanel->setVisible(true)</code>，关闭按钮 → <code>setVisible(false)</code></li>
+    <li>面板为独立区域，不影响功能栏自身布局</li>
+  </ul>
+  <h4>涉及文件</h4>
+  <ul>
+    <li><code>src/MainWindow.h</code> — 新增 m_debugBtn, m_debugPanel, m_debugAddrEdit, m_debugFcEdit, m_debugTimeoutSpin, m_debugParamEdit, m_debugPackBtn, m_debugFrameLabel</li>
+    <li><code>src/MainWindow.cpp</code> — setupUI 面板构建、onDebugPack 槽函数</li>
+  </ul>
+</div>
+
+<!-- DEMAND 6 -->
+<div class="card">
+  <div class="card-title">需求6 · 打包脚本 (issue文件夹) <span class="tag tag-blue">构建</span></div>
+  <h4>方案</h4>
+  <ul>
+    <li>根目录新建 <code>issue/</code> 文件夹</li>
+    <li>创建 <code>issue/pack.sh</code>（macOS/Linux）和 <code>issue/pack.bat</code>（Windows）</li>
+    <li>脚本逻辑：
+      <ol>
+        <li>读取 CMakeLists.txt 中的 VERSION 生成版本号</li>
+        <li>执行 cmake + make/release build</li>
+        <li>使用 <code>macdeployqt</code> / <code>windeployqt</code> 收集 Qt 依赖</li>
+        <li>打包为 <code>ComforToolV1.1_macOS.zip</code> 或 <code>ComforToolV1.1_Win64.zip</code></li>
+        <li>输出到 <code>issue/</code> 目录</li>
+      </ol>
+    </li>
+  </ul>
+  <h4>新增文件</h4>
+  <ul>
+    <li><code>issue/pack.sh</code></li>
+    <li><code>issue/pack.bat</code></li>
+  </ul>
+</div>
+
+<!-- DEMAND 8 -->
+<div class="card">
+  <div class="card-title">需求8 · 程序图标 <span class="tag tag-orange">资源</span></div>
+  <h4>方案</h4>
+  <ul>
+    <li>创建 <code>res/</code> 资源目录</li>
+    <li>设计简约字母C图标（SVG主源 + 导出PNG/ICO）：</li>
+    <li style="list-style:none">
+      <svg width="48" height="48" viewBox="0 0 48 48" style="vertical-align:middle;margin:4px 0">
+        <rect width="48" height="48" rx="10" fill="#7830b0"/>
+        <text x="24" y="34" font-size="30" font-family="sans-serif" font-weight="bold" fill="#fff" text-anchor="middle">C</text>
+      </svg>
+      紫色圆角方块 + 白色C字母，与当前主题配色一致
+    </li>
+    <li>创建 <code>res/res.qrc</code> 资源文件</li>
+    <li>CMakeLists.txt 添加资源文件</li>
+    <li><code>MainWindow</code> 构造函数中 <code>setWindowIcon</code></li>
+    <li>macOS: 设置 <code>setWindowIcon</code> 即可（Qt会自动处理 dock 图标）</li>
+    <li>Windows: 额外提供 <code>.ico</code> 文件，通过 CMake <code>RC_FILE</code> 嵌入</li>
+  </ul>
+  <h4>新增文件</h4>
+  <ul>
+    <li><code>res/icon.svg</code>、<code>res/icon.png</code>、<code>res/icon.ico</code></li>
+    <li><code>res/res.qrc</code></li>
+  </ul>
+  <h4>涉及文件</h4>
+  <ul>
+    <li><code>CMakeLists.txt</code> — 添加资源文件 + ico</li>
+    <li><code>src/MainWindow.cpp</code> — setWindowIcon</li>
+  </ul>
+</div>
+
+<!-- DEMAND 9 -->
+<div class="card">
+  <div class="card-title">需求9 · 日志区优化 <span class="tag">逻辑</span></div>
+  <h4>变更点</h4>
+  <ul>
+    <li><b>不解释帧含义</b>：去除发送时的 <code>note</code> 参数（如"握手请求"、"设备信息请求"等），日志仅显示 <code>[TX] hex</code> 和 <code>[RX] hex</code></li>
+    <li><b>超时提示</b>：当前已有 <code>appendSystemLog("握手超时，无响应")</code>、固件更新各步骤超时提示，保持现状即可；<code>waitForResponse</code> 返回 false 的场景都有日志，无需额外改动</li>
+  </ul>
+  <h4>涉及文件</h4>
+  <ul>
+    <li><code>src/MainWindow.cpp</code> — 移除 appendLog 的 note 参数调用</li>
+  </ul>
+</div>
+
+<!-- DEMAND 10 -->
+<div class="card">
+  <div class="card-title">需求10 · Windows打包方案 (Win10/Win11) <span class="tag tag-blue">构建</span><span class="tag tag-pink">重要</span></div>
+  <h4>方案：MinGW 静态链接 + windeployqt</h4>
+
+  <h3>A. 交叉编译方案（在Mac上编译Windows exe）</h3>
+  <div class="note">交叉编译工具链配置复杂且Qt对MinGW交叉编译支持有限，<b>不推荐</b>。</div>
+
+  <h3>B. Windows原生编译 + 部署（推荐）</h3>
+  <h4>前置条件</h4>
+  <ul>
+    <li>Windows 10/11 64位系统</li>
+    <li>安装 <b>Qt 6.8.3 MSVC 2022 64-bit</b>（从 <a href="https://www.qt.io/download-qt-installer">Qt官方安装器</a> 或 <code>aqtinstall</code>）</li>
+    <li>安装 <b>Visual Studio 2022 Build Tools</b>（或 Community Edition），含 C++ 桌面开发工作负载</li>
+    <li>安装 <b>CMake 3.20+</b></li>
+  </ul>
+  <h4>编译步骤</h4>
+  <pre>
+# 1. 打开 "x64 Native Tools Command Prompt for VS 2022"
+
+# 2. 配置 CMake（指向Qt MSVC路径）
+cmake -S C:\ComforTool -B C:\ComforTool\build ^
+      -DCMAKE_PREFIX_PATH="C:/Qt/6.8.3/msvc2022_64" ^
+      -DCMAKE_BUILD_TYPE=Release
+
+# 3. 编译
+cmake --build C:\ComforTool\build --config Release
+
+# 4. 部署Qt依赖（复制Qt DLL等）
+cd C:\ComforTool\build\Release
+C:\Qt\6.8.3\msvc2022_64\bin\windeployqt.exe ComforTool.exe ^
+      --dir C:\ComforTool\deploy ^
+      --release ^
+      --no-translations ^
+      --no-opengl-sw
+
+# 5. 复制可执行文件
+copy ComforTool.exe C:\ComforTool\deploy\
+
+# 6. 复制串口模块DLL（windeployqt不自动处理SerialPort）
+copy C:\Qt\6.8.3\msvc2022_64\bin\Qt6SerialPort.dll C:\ComforTool\deploy\
+
+# 7. 如有自定义icon.rc，确保已编译嵌入exe
+
+# 8. 打包
+cd C:\ComforTool\deploy
+..\issue\pack.bat
+# 生成 issue\ComforToolV1.1_Win64.zip
+  </pre>
+
+  <h4>pack.bat 脚本内容</h4>
+  <pre>
+@echo off
+setlocal enabledelayedexpansion
+
+:: 从CMakeLists.txt提取版本号
+for /f "tokens=2,3 delims= )" %%a in ('findstr /c:"project(ComforTool VERSION" ..\CMakeLists.txt') do set VER=%%a
+set VER=%VER: =%
+set PKGNAME=ComforTool%VER%_Win64
+
+:: 清理并打包
+if exist "..\issue\%PKGNAME%.zip" del "..\issue\%PKGNAME%.zip"
+powershell -Command "Compress-Archive -Path '.\*' -DestinationPath '..\issue\%PKGNAME%.zip'"
+echo 已生成: ..\issue\%PKGNAME%.zip
+pause
+  </pre>
+
+  <h4>Win10/Win11 兼容性说明</h4>
+  <ul>
+    <li><b>MSVC 2022 编译的程序</b>依赖 <code>vcruntime140.dll</code> 等 Visual C++ 运行时。建议在 deploy 目录中附带 <b>VC++ Redistributable</b> 安装包，或在 pack.bat 中复制 DLL：</li>
+  </ul>
+  <pre>
+:: 复制 VC++ 运行时 (VS 2022 → 14.40.x)
+copy "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Redist\MSVC\14.42.34433\x64\Microsoft.VC143.CRT\*.dll" .\
+  </pre>
+  <ul>
+    <li><b>windeployqt</b> 自动处理 Qt6Core、Qt6Gui、Qt6Widgets、plugins 等</li>
+    <li><b>Qt6SerialPort</b> 需要手动复制（上面步骤6）</li>
+    <li>打包后在 <b>干净的 Win10/Win11</b> 上测试，确认无缺失 DLL</li>
+    <li>如需 <b>单文件绿色版</b>，可使用 <code>Enigma Virtual Box</code> 将所有 DLL 打包为单 exe（非必须）</li>
+  </ul>
+</div>
+
+<!-- ============================================================ -->
+<h2>四、执行顺序</h2>
+
+<table>
+  <thead><tr><th>步骤</th><th>内容</th><th>涉及文件</th><th>预估</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>备份当前工程到备份目录</td><td>全量复制</td><td>1min</td></tr>
+    <tr><td>2</td><td>Version.h.in + CMakeLists 版本配置</td><td>CMakeLists.txt, src/Version.h.in, src/main.cpp</td><td>3min</td></tr>
+    <tr><td>3</td><td>程序图标资源</td><td>res/*, CMakeLists.txt, MainWindow.cpp</td><td>5min</td></tr>
+    <tr><td>4</td><td>发送区定时发送功能</td><td>MainWindow.h/cpp</td><td>5min</td></tr>
+    <tr><td>5</td><td>串口状态联动锁定 + 版本框居中</td><td>MainWindow.cpp</td><td>5min</td></tr>
+    <tr><td>6</td><td>通信调试面板(按钮+面板+打包逻辑)</td><td>MainWindow.h/cpp</td><td>10min</td></tr>
+    <tr><td>7</td><td>日志区优化(去除帧含义note)</td><td>MainWindow.cpp</td><td>2min</td></tr>
+    <tr><td>8</td><td>issue/ 打包脚本</td><td>issue/pack.sh, issue/pack.bat</td><td>5min</td></tr>
+    <tr><td>9</td><td>编译验证 + 备份同步</td><td>—</td><td>3min</td></tr>
+  </tbody>
+</table>
+
+<!-- ============================================================ -->
+<h2>五、风险与备注</h2>
+
+<div class="note">需求7（序号缺失）原始文档中不存在，视为预留未使用。</div>
+<div class="note">通信调试面板为独立区域，在功能栏下方展开关闭，不影响功能栏内部布局。</div>
+<div class="note">Windows打包需在Windows物理机（或VM）上操作，macOS无法直接生成Win exe。pack.bat 作为参考脚本提供。</div>
+<div class="note">所有删除文件遵循规则移至 TrashCan/，不使用 rm -f。</div>
+
+<!-- ============================================================ -->
+<h2>六、追加需求说明 (V1.1)</h2>
+
+<div class="card">
+  <div class="card-title">追加1 · 功能栏左侧双列布局 <span class="tag tag-green">已纳入V1.1</span></div>
+  <ul>
+    <li><b>左列上行</b>：通信调试按钮 + 更新固件按钮（水平并排）</li>
+    <li><b>左列下行</b>：握手按钮 + 设备状态标签（水平并排）</li>
+    <li><b>中间</b>：弹性间距 + 版本信息框（居中）+ 弹性间距</li>
+    <li>功能栏内部改为嵌套 QVBoxLayout，左侧两行用 QVBoxLayout 叠放</li>
+  </ul>
+</div>
+
+<div class="card">
+  <div class="card-title">追加2 · 通信调试面板独立 <span class="tag tag-green">已纳入V1.1</span></div>
+  <ul>
+    <li>通信调试面板不再嵌入功能栏内部，而是在功能栏 QGroupBox 下方作为独立区域展开</li>
+    <li>面板有标题栏和关闭按钮，可单独关闭</li>
+    <li>这样功能栏布局不受面板展开/收起影响，视觉更清晰</li>
+  </ul>
+</div>
+
+</body>
+</html>

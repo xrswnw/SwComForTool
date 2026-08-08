@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>ComforTool Windows 适配计划 — Round 022 (Plan v1.0)</title>
+<style>
+  body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;max-width:980px;margin:24px auto;padding:0 20px;color:#222;line-height:1.7;background:#fafafa;}
+  h1{font-size:22px;border-bottom:3px solid #5377;color:#3a3a3a;padding-bottom:8px;}
+  h2{font-size:17px;margin-top:28px;border-left:5px solid #5377;padding-left:10px;background:#eef;color:#234;}
+  h3{font-size:15px;margin-top:18px;color:#345;}
+  code{background:#eee;padding:1px 5px;border-radius:4px;font-family:ui-monospace,Menlo,monospace;font-size:13px;}
+  pre{background:#1e1e1e;color:#d4d4d4;padding:14px 16px;border-radius:8px;overflow-x:auto;font-size:12.5px;line-height:1.5;}
+  pre .c{color:#6a9955;} pre .k{color:#569cd6;} pre .s{color:#ce9178;}
+  table{border-collapse:collapse;width:100%;margin:10px 0;font-size:13px;}
+  th,td{border:1px solid #bbb;padding:6px 10px;text-align:left;vertical-align:top;}
+  th{background:#5377;color:#fff;}
+  tr:nth-child(even){background:#f0f0f5;}
+  .tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:10px;color:#fff;margin-right:4px;}
+  .t-mac{background:#555;} .t-win{background:#2b6;} .t-new{background:#c70;} .t-edit{background:#36e;}
+  .risk{background:#fff3cd;border-left:4px solid #f0ad4e;padding:8px 12px;margin:10px 0;border-radius:4px;}
+  .ok{background:#d4edda;border-left:4px solid #28a745;padding:8px 12px;margin:10px 0;border-radius:4px;}
+  .note{background:#eef5ff;border-left:4px solid #2b80c9;padding:8px 12px;margin:10px 0;border-radius:4px;font-size:13px;}
+  .small{font-size:12px;color:#666;}
+  ul{margin:6px 0 6px 0;} li{margin:3px 0;}
+  .ver{float:right;font-size:13px;color:#888;}
+</style>
+</head>
+<body>
+
+<h1>ComforTool Windows 适配计划 — Round 022 <span class="ver">Plan v1.0 &nbsp;|&nbsp; 待确认（未执行）</span></h1>
+
+<div class="note">
+<b>状态：</b>本文件仅为计划，<b>尚未执行任何代码变更</b>。请审查后确认；确认后我将按 CLAUDE.md 备份规则执行并在同目录生成 <code>Report.html</code>。
+<br><b>约束（来自 Demand）：</b>不动 Mac 环境行为，仅补充 Win 支持；Win 端编译后生成与 Mac 功能一致的可执行文件。
+</div>
+
+<h2>一、背景与现状</h2>
+<p>Mac 端已全功能：USB 枚举、通信、固件更新均正常，USB 传输为纯 <code>IOHIDManager</code> 实现（<code>HidManagerMac.cpp/.h</code>）。现需补 Windows 适配，使工程在 Win 端用 CMake 编译后产出功能一致的可执行程序。</p>
+
+<table>
+<tr><th>项</th><th>现状</th><th>Win 适配所需</th></tr>
+<tr><td>CMakeLists.txt</td><td>已有 <code>WIN32</code> 分支 + Qt 路径自动探测 + <code>res/icon.ico</code></td><td>USB 源码按平台选；Win 链接 <code>setupapi/hid</code></td></tr>
+<tr><td>HidManagerMac.cpp/.h</td><td><span class="tag t-mac">macOS</span> 纯 IOHIDManager，Win 不可编译（无 IOKit）</td><td><span class="tag t-new">新增</span> <code>HidManagerWin</code>（原生 Win32 HID）</td></tr>
+<tr><td>MainWindow.cpp/.h</td><td>全程直引 <code>HidManagerMac</code>（4 类引用点）</td><td><span class="tag t-edit">改名</span> 抽象为平台门面 <code>HidManager</code></td></tr>
+<tr><td>ProtocolParser / SerialPortManager</td><td>纯 Qt，无平台耦合</td><td><span class="tag t-win">无需改动</span>（QSerialPort 跨平台）</td></tr>
+<tr><td><code>&lt;unistd.h&gt;</code> / <code>/tmp</code> 日志</td><td>MainWindow.cpp 未守护 unistd；多处 <code>"/tmp/..."</code> 调试日志</td><td>守护头；日志路径改 <code>QDir::tempPath()</code>（Mac 行为不变）</td></tr>
+</table>
+
+<h2>二、设计方案</h2>
+
+<h3>2.1 平台门面 HidManager.h <span class="tag t-new">新增</span></h3>
+<p>新增 <code>src/HidManager.h</code>，按平台 using 别名，<b>Mac 上 <code>HidManager</code> ≡ <code>HidManagerMac</code>，行为完全不变</b>：</p>
+<pre><span class="c">// src/HidManager.h —— 平台 HID 门面, MainWindow 仅依赖此名</span>
+#pragma once
+#include &lt;QtCore/QtGlobal&gt;
+#ifdef Q_OS_MACOS
+  #include "HidManagerMac.h"
+  using HidManager = HidManagerMac;
+#elif defined(Q_OS_WIN)
+  #include "HidManagerWin.h"
+  using HidManager = HidManagerWin;
+#endif</pre>
+
+<h3>2.2 HidManagerWin.h / .cpp <span class="tag t-new">新增</span> <span class="tag t-win">原生Win32 HID</span></h3>
+<p>原生 Win32 HID API，<b>不引入第三方库</b>（与 Mac 端“纯平台 API”风格一致）。接口与 <code>HidManagerMac</code> 1:1（<code>ITransport</code> + 静态 <code>enumerate</code>）：</p>
+<ul>
+<li><b>enumerate(vid,pid)</b>：<code>SetupDiGetClassDevs(&amp;GUID_DEVINTERFACE_HID)</code> → <code>SetupDiEnumDeviceInterfaces</code> → <code>SetupDiGetDeviceInterfaceDetail</code> 取设备路径；逐个 <code>CreateFile</code> + <code>HidD_GetAttributes</code> 取 VID/PID 过滤；<code>HidD_GetManufacturerString/ProductString/SerialNumberString</code> 取描述；构造 <code>HidDeviceInfo</code>（<code>path</code> 为 <code>\\?\HID#...</code> 设备接口路径）。</li>
+<li><b>open(params)</b>：从 <code>params["path"]</code>（或 vid/pid 再 enumerate 取 path）<code>CreateFile(GENERIC_READ|WRITE, FILE_SHARE_RW, OPEN_EXISTING, FILE_FLAG_OVERLAPPED)</code>；起独立 <code>QThread</code> 跑 overlapped <code>ReadFile</code> 循环（对标 Mac 的 CFRunLoop 工作线程）。</li>
+<li><b>writeData(data)</b>：<code>WriteFile</code> 同步写。报告 ID 处理见 <a href="#risk-reportid">关键风险</a>。</li>
+<li><b>readAll()</b>：锁内拷贝 <code>m_rxBuf</code> 并清空（与 Mac 一致）。输入线程完成回调锁内 append + <code>emit dataReceived</code>。</li>
+<li><b>close()/isOpen()/name()/errorString()</code>：同义实现。</li>
+</ul>
+
+<h3>2.3 MainWindow 引用改名 <span class="tag t-edit">编辑</span>（Mac 行为不变）</h3>
+<table>
+<tr><th>位置</th><th>现状</th><th>改为</th></tr>
+<tr><td>MainWindow.cpp:1-3</td><td><code>#include "HidManagerMac.h"</code></td><td><code>#include "HidManager.h"</code></td></tr>
+<tr><td>MainWindow.h:20,130</td><td><code>class HidManagerMac;</code> / <code>HidManagerMac *m_hidManager</code></td><td><code>HidManager</code></td></tr>
+<tr><td>MainWindow.cpp:52</td><td><code>new HidManagerMac(this)</code></td><td><code>new HidManager(this)</code></td></tr>
+<tr><td>MainWindow.cpp:1153/3129/3360/3420</td><td><code>HidManagerMac::enumerate(...)</code></td><td><code>HidManager::enumerate(...)</code></td></tr>
+</table>
+<p class="small">全部位于 <code>#ifdef COMFORTOOL_ENABLE_USB</code> 内。Mac 上 <code>HidManager</code> 即 <code>HidManagerMac</code>，编译产物与行为与现状完全一致。</p>
+
+<h3>2.4 CMakeLists.txt 调整 <span class="tag t-edit">编辑</span></h3>
+<pre><span class="c"># USB 源码按平台选取</span>
+if(COMFORTOOL_ENABLE_USB)
+  target_compile_definitions(SwComForTool PRIVATE COMFORTOOL_ENABLE_USB=1)
+  <span class="k">if</span>(APPLE)
+    list(APPEND COMFORTOOL_SOURCES src/HidManagerMac.cpp)
+    <span class="c"># 现有: IOKit + CoreFoundation 链接保持不变</span>
+  <span class="k">elseif</span>(WIN32)
+    list(APPEND COMFORTOOL_SOURCES src/HidManagerWin.cpp)
+    <span class="c"># Win: SetupAPI + HID 链接</span>
+    target_link_libraries(SwComForTool PRIVATE setupapi hid)
+  <span class="k">endif</span>()
+<span class="k">endif</span>()</pre>
+<p class="small">注：现有 <code>list(APPEND ... HidManagerMac.cpp)</code> 是无条件追加（Win 上会失败），改为平台分支。<code>hid.lib</code> 由 <code>hid.dll</code> 提供（Windows 自带，无需额外安装）。</p>
+
+<h3>2.5 小清理（Mac 行为不变）<span class="tag t-edit">编辑</span></h3>
+<ul>
+<li><code>MainWindow.cpp:29 #include &lt;unistd.h&gt;</code>：用 <code>#ifdef Q_OS_MACOS</code> 守护（MSVC 无此头；实际未用到 POSIX 符号，<code>QThread::msleep/sleep</code> 已是 Qt 跨平台）。</li>
+<li><code>/tmp/comfor_*.log</code> 调试日志（MainWindow.cpp 4 处 / HidManagerMac.cpp 10 处）：改用 <code>QDir::tempPath()</code> 拼接（Mac 返回 <code>/tmp</code>，行为不变；Win 返回 <code>%TEMP%</code>）。</li>
+</ul>
+
+<h2>三、关键风险与验证点</h2>
+
+<div class="risk" id="risk-reportid">
+<b>⚠ 最关键：HID 报告 ID（Report ID）在 Win 与 Mac 的差异</b>
+<p>设备分析（依据 HidManagerMac 注释与实测）：单 HID 接口，<b>Report ID = 0（无报告 ID）</b>，64B 报文，首字节 <code>0x02</code> 是设备协议前缀（非真实 Report ID）。</p>
+<ul>
+<li><b>Mac 写：</b><code>IOHIDDeviceSetReport(Output, reportID=0, pkt[64])</code>，<code>pkt[0]=0x02</code>，设备在线收到 64B <code>[0x02, &lt;63B 帧&gt;]</code>。</li>
+<li><b>Win 写（推测）：</b>Windows 约定 Report ID=0 设备的 <code>WriteFile</code> 缓冲须首字节填 <code>0x00</code>（隐式 Report ID），后接 64B 报文，共 <b>65B</b>：<code>[0x00, 0x02, &lt;63B 帧&gt;]</code>；Windows 剥离 <code>0x00</code>，设备收到 64B <code>[0x02, ...]</code> = 与 Mac 一致 ✅。</li>
+<li><b>Win 读（推测）：</b><code>ReadFile</code> 返回 65B <code>[0x00, 0x02, &lt;63B 帧&gt;]</code>，剥离 <code>0x00</code> + <code>0x02</code> 得协议帧（与 Mac 剥 <code>0x02</code> 等价）。</li>
+</ul>
+<p><b>风险：</b>若设备报告描述符的实际报告长度/Report ID 与上述推测不符，写可能 STALL/读可能错位。<b>执行时需在真实 Win + 真机硬件验证</b>，并准备回退变体：① 64B <code>[0x02,&lt;63&gt;]</code>（不加 0x00）；② 65B 不同对齐；用 <code>HidD_GetPreparsedData</code>+<code>HidP_GetCaps</code> 读取真实 <code>OutputReportSize/InputReportSize</code> 辅助判定。</p>
+</div>
+
+<div class="note">
+<b>其他注意</b>
+<ul>
+<li>Windows HID 类自带驱动，SwCcrd(VID 5377/PID 5378) 通常即插即用，无需额外驱动安装。</li>
+<li><code>QSerialPort</code> 在 Win 由 Qt 提供，跨平台；UI 已隐藏 COM（<code>TransportType::Com</code> 暂不启用），保持现状。</li>
+<li>Win 端无 <code>.app</code> bundle 的 HID 拉黑问题（Round 022 之前已查证为 macOS LaunchServices 特有）。</li>
+</ul>
+</div>
+
+<h2>四、执行步骤（确认后执行）</h2>
+<table>
+<tr><th>#</th><th>步骤</th><th>产物/校验</th></tr>
+<tr><td>0</td><td>备份：<code>./backup.sh "Round022 Windows 适配"</code>（CLAUDE.md 强制）</td><td>BackupArea 新 Round + Changelog</td></tr>
+<tr><td>1</td><td>新增 <code>src/HidManager.h</code>（平台门面）</td><td>新文件</td></tr>
+<tr><td>2</td><td>新增 <code>src/HidManagerWin.h</code> / <code>src/HidManagerWin.cpp</code></td><td>新文件（原生 Win32 HID）</td></tr>
+<tr><td>3</td><td>改 MainWindow.h/.cpp：<code>HidManagerMac</code> → <code>HidManager</code></td><td>4 类引用点</td></tr>
+<tr><td>4</td><td>改 CMakeLists.txt：USB 源码按平台选 + Win 链接 <code>setupapi hid</code></td><td>无 <code>HidManagerMac.cpp</code> 无条件追加</td></tr>
+<tr><td>5</td><td>小清理：守护 <code>unistd.h</code>、<code>/tmp</code> → <code>QDir::tempPath()</code></td><td>Mac 行为不变</td></tr>
+<tr><td>6</td><td><b>Mac 端回归验证</b>：cmake build + 启动裸二进制 + USB 枚举/通信/固件升级回归</td><td>确认未破坏 Mac（核心红线）</td></tr>
+<tr><td>7</td><td>生成 <code>Agent/Round022/Report.html</code></td><td>含变更清单/风险实测/回归结论</td></tr>
+</table>
+
+<h2>五、范围边界</h2>
+<ul>
+<li><b>本机为 macOS，无 MSVC/Win 工具链</b>：执行仅产出可编译的源码 + CMake + Mac 端回归。<b>Win 端实际编译与真机 USB 验证由你在 Win 机器完成</b>（我会提供编译命令与验证清单）。</li>
+<li>COM 串口在 Win 不启用（UI 已隐藏，保持）。</li>
+<li>代码签名/windeployqt 打包不在本次（可后续单列）。</li>
+</ul>
+
+<h2>六、优化建议（可选，本次默认不做，待你勾选）</h2>
+<ul>
+<li>① 调试日志改为可由编译宏关闭的统一日志宏，减少 <code>/tmp</code> 碎片文件。</li>
+<li>② 长期若要彻底统一 HID 层，可评估 <code>hidapi</code>（跨平台），但本次保持原生 API 与 Mac 风格一致，不引入第三方。</li>
+<li>③ <code>HidManagerMac</code> 的 <code>appendRxFrame</code>（CFRunLoop 线程直入队）与 Win 的输入线程入队，可抽象共享基类行为，但为最小改动本次不抽。</li>
+</ul>
+
+<h2>七、版本记录</h2>
+<ul><li><b>v1.0</b> 初始计划，待确认。</li></ul>
+
+<p class="small">—— Claude Code, Round 022 · ComforTool Windows 适配 · 待你确认后执行</p>
+
+</body>
+</html>

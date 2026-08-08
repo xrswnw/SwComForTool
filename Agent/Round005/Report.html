@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ComforTool - Round005 执行报告</title>
+    <style>
+        :root{--bg:#f0eaf8;--card:#e8e0f4;--border:#c8b8e0;--text:#503070;--dim:#8870a8;--accent:#7830b0;--warn:#c050a0;--ok:#308030}
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:-apple-system,"PingFang SC",sans-serif;background:var(--bg);color:var(--text);line-height:1.8;padding:40px 20px}
+        .container{max-width:1000px;margin:0 auto}
+        h1{text-align:center;color:var(--accent);margin-bottom:6px}
+        .ver{text-align:center;color:var(--dim);font-size:.85em;margin-bottom:28px}
+        .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:22px 26px;margin-bottom:16px}
+        .card-title{font-size:1.1em;font-weight:600;color:var(--accent);margin-bottom:10px}
+        table{width:100%;border-collapse:collapse;font-size:.88em}
+        th,td{padding:6px 10px;text-align:left;border-bottom:1px solid var(--border)}
+        th{color:var(--dim);font-weight:500}
+        .badge{display:inline-block;font-size:.68em;padding:2px 8px;border-radius:99px;font-weight:600;background:rgba(120,48,176,0.12);color:var(--accent)}
+        .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0}
+        .item{background:rgba(0,0,0,0.03);border-radius:8px;padding:10px 14px}
+        .item .label{color:var(--dim);font-size:.82em}
+        .item .value{font-size:1em;font-weight:600;margin-top:2px}
+        .tag{display:inline-block;font-size:.65em;padding:1px 5px;border-radius:3px;margin-left:5px}
+        .tag-new{background:rgba(48,128,48,0.1);color:#308030}
+        .tag-fix{background:rgba(192,80,160,0.1);color:#c050a0}
+        .code{background:rgba(0,0,0,0.15);border-radius:4px;padding:8px 12px;font-family:"SF Mono",monospace;font-size:.82em;line-height:1.6;color:var(--text);overflow-x:auto;white-space:pre}
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Round005 执行报告</h1>
+    <p class="ver">协议解析 · 握手 · 固件更新 · 日志保存</p>
+
+    <div class="card">
+        <div class="card-title">总体概况</div>
+        <div class="grid">
+            <div class="item"><div class="label">编译状态</div><div class="value" style="color:#308030">零错误零警告</div></div>
+            <div class="item"><div class="label">新增文件</div><div class="value">ProtocolParser.h/cpp</div></div>
+            <div class="item"><div class="label">新增类</div><div class="value">ProtocolParser (CRC32/帧组包/解析)</div></div>
+            <div class="item"><div class="label">固件更新流程</div><div class="value">Boot握手→设备信息→开始→数据×N→校验→执行</div></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">各阶段执行结果</div>
+        <table>
+            <thead><tr><th>#</th><th>内容</th><th>状态</th></tr></thead>
+            <tbody>
+                <tr><td>1</td><td>ProtocolParser协议解析引擎 (CRC32/帧组包解析/APP+BOOT功能码)</td><td><span class="badge">完成</span></td></tr>
+                <tr><td>2</td><td>握手协议 (FC=0x01, DevAddr解析, 版本解析, AD1校验)</td><td><span class="badge">完成</span></td></tr>
+                <tr><td>3</td><td>固件更新流程 (选bin/BOOT序列/进度条/错误处理)</td><td><span class="badge">完成</span></td></tr>
+                <tr><td>4</td><td>日志保存 (md文件到log目录)</td><td><span class="badge">完成</span></td></tr>
+                <tr><td>5</td><td>功能区解锁逻辑/更新固件按钮/保存按钮/进度条</td><td><span class="badge">完成</span></td></tr>
+                <tr><td>6</td><td>编译验证+备份+报告</td><td><span class="badge">完成</span></td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <div class="card-title">新增文件</div>
+        <table>
+            <thead><tr><th>文件</th><th>说明</th></tr></thead>
+            <tbody>
+                <tr><td>src/ProtocolParser.h</td><td>协议解析引擎头文件：帧结构/设备信息结构/CRC32/组包/解析</td></tr>
+                <tr><td>src/ProtocolParser.cpp</td><td>协议解析引擎实现：CRC32(MPEG-2)/APP+BOOT所有功能码/Result码映射</td></tr>
+                <tr><td>src/MainWindow.h</td><td>新增成员：ProtocolParser指针/进度条/升级状态/设备状态变量</td></tr>
+                <tr><td>src/MainWindow.cpp</td><td>完整重写：协议集成/握手流程/固件更新6步流程/日志保存/flashControls屏蔽</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <div class="card-title">协议解析引擎 (ProtocolParser)</div>
+        <table>
+            <thead><tr><th>功能</th><th>说明</th></tr></thead>
+            <tbody>
+                <tr><td>帧格式</td><td>[0x44][0x41][DevAddr][0x00][Length_LE16][FC][Data][CRC32_LE32]</td></tr>
+                <tr><td>响应标志</td><td>响应FC = 请求FC XOR 0xFF（如请求FC=0x01，响应FC=0xFE）</td></tr>
+                <tr><td>CRC32</td><td>MPEG-2: 多项式0x04C11DB7, 初值0xFFFFFFFF, 范围Header~Data</td></tr>
+                <tr><td>APP功能码</td><td>0x01握手/0x02进入Boot/0x07设备信息/0xA0射频信息/0xA3射频控制/0x1A 1444A</td></tr>
+                <tr><td>BOOT功能码</td><td>0x01握手(Layer=0)/0x03升级开始/0x04固件数据/0x05升级校验/0x06升级执行/0x07设备信息</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <div class="card-title">握手流程</div>
+        <div class="code">1. 发送 APP握手帧 (DevAddr=verTopEdit内容或广播0xFF)
+2. 等待响应(5000ms) → 解析DevAddr+ProtoVersion
+3. verTopEdit 显示 DevAddr (0x01)
+4. 发送 设备信息帧 (FC=0x07)
+5. 等待响应(3000ms) → 解析 ProjectName+ProtoVersion+FirmwareVersion
+6. verBottomEdit 显示 "ProjectName FirmwareVersion" (如 "AD01 V2.1.0")
+7. ProjectName含"AD1" → 功能区解锁; 否则报错"设备校验失败"</div>
+    <p style="margin-top:8px;color:var(--dim);font-size:.85em">设备信息偏移: 33~52(20B)ProjectName / 17(1B)ProtoVersion / 20~21(2B)FirmwareVersion</p>
+    <p style="margin-top:4px;color:var(--dim);font-size:.85em">Boot层握手响应: Data[5]=Layer(0=Boot层响应)</p>
+    </div>
+
+    <div class="card">
+        <div class="card-title">固件更新流程 (IAP)</div>
+        <table>
+            <thead><tr><th>步骤</th><th>指令</th><th>说明</th></tr></thead>
+            <tbody>
+                <tr><td>1</td><td>FC=0x01 (Boot)</td><td>Boot层握手，确认Layer=0</td></tr>
+                <tr><td>2</td><td>FC=0x07</td><td>获取设备UID，计算BindVerify</td></tr>
+                <tr><td>3</td><td>FC=0x03</td><td>发送固件元数据(FwSize/FwCrc32/FwVer/BindVerify)，擦除Flash</td></tr>
+                <tr><td>4</td><td>FC=0x04×N</td><td>分帧发送固件数据，每帧512字节，含Seq+Offset+Data</td></tr>
+                <tr><td>5</td><td>FC=0x05</td><td>四重校验(Size/CRC/MSP向量/BindVerify)</td></tr>
+                <tr><td>6</td><td>FC=0x06</td><td>保存参数，执行系统复位，3秒后自动重新握手</td></tr>
+            </tbody>
+        </table>
+        <p style="margin-top:8px;color:var(--dim);font-size:.85em">BindVerify: 设备信息响应Data[13~16] (LE32) 直接作为绑定校验值</p>
+    </div>
+
+    <div class="card">
+        <div class="card-title">日志保存</div>
+        <table>
+            <thead><tr><th>项</th><th>说明</th></tr></thead>
+            <tbody>
+                <tr><td>路径</td><td>可执行文件所在目录/log/ (如不存在则自动创建)</td></tr>
+                <tr><td>文件名</td><td>YYYY-MM-DD_HH-mm-ss.md</td></tr>
+                <tr><td>格式</td><td>Markdown，含时间标题+设备信息+日志时间线</td></tr>
+                <tr><td>触发</td><td>日志有内容后"保存"按钮可用；清空后禁用</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <div class="card-title">功能区解锁条件</div>
+        <div class="code">握手成功(FC=0x01响应) + 设备信息ProjectName含"AD1" → 功能区解锁(握手/更新固件可用)
+设备名不含"AD1" → 报错"设备校验失败"，功能区保持禁用</div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">新增控件</div>
+        <table>
+            <thead><tr><th>控件</th><th>类型</th><th>说明</th></tr></thead>
+            <tbody>
+                <tr><td>更新固件</td><td>QPushButton</td><td>粉紫色(#c050a0)，打开文件对话框选bin，初始禁用</td></tr>
+                <tr><td>保存</td><td>QPushButton</td><td>紫色(#a080c0)，日志有内容后可用，生成md到log目录</td></tr>
+                <tr><td>进度条</td><td>QProgressBar</td><td>淡紫色主题，升级时显示(总帧数分母)，实时更新</td></tr>
+                <tr><td>升级状态</td><td>QLabel</td><td>显示当前步骤(如"步骤4/6: 传输中 12/75 帧")</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+</div>
+</body>
+</html>

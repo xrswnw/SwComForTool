@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ComforTool - Round004 执行报告</title>
+    <style>
+        :root{--bg:#f0eaf8;--card:#e8e0f4;--border:#c8b8e0;--text:#503070;--dim:#8870a8;--accent:#7830b0}
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:-apple-system,"PingFang SC",sans-serif;background:var(--bg);color:var(--text);line-height:1.8;padding:40px 20px}
+        .container{max-width:960px;margin:0 auto}
+        h1{text-align:center;color:var(--accent);margin-bottom:6px}
+        .ver{text-align:center;color:var(--dim);font-size:.85em;margin-bottom:28px}
+        .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:22px 26px;margin-bottom:18px}
+        .card-title{font-size:1.15em;font-weight:600;color:var(--accent);margin-bottom:12px}
+        table{width:100%;border-collapse:collapse;font-size:.9em}
+        th,td{padding:7px 12px;text-align:left;border-bottom:1px solid var(--border)}
+        th{color:var(--dim);font-weight:500}
+        .badge{display:inline-block;font-size:.7em;padding:2px 8px;border-radius:99px;font-weight:600;background:rgba(120,48,176,0.12);color:var(--accent)}
+        .tag{font-size:.68em;padding:1px 6px;border-radius:3px;margin-left:6px}
+        .tag-v1{background:rgba(120,48,176,0.1);color:#7830b0}
+        .tag-v2{background:rgba(200,80,120,0.1);color:#c050a0}
+        .tag-v3{background:rgba(60,140,60,0.1);color:#308030}
+        .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0}
+        .item{background:rgba(0,0,0,0.03);border-radius:8px;padding:10px 14px}
+        .item .label{color:var(--dim);font-size:.82em}
+        .item .value{font-size:1em;font-weight:600;margin-top:2px}
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <h1>ComforTool - Round004 执行报告</h1>
+    <p class="ver">v1 原始需求 | v2 追加修正 | v3 追加UI拉伸</p>
+
+    <div class="card">
+        <div class="card-title">总体概况</div>
+        <div class="grid">
+            <div class="item"><div class="label">编译状态</div><div class="value" style="color:#7830b0">零错误零警告</div></div>
+            <div class="item"><div class="label">窗口尺寸</div><div class="value">960 × 540（可调）</div></div>
+            <div class="item"><div class="label">配色方案</div><div class="value">淡紫/薰衣草</div></div>
+            <div class="item"><div class="label">版本信息框</div><div class="value">上(短/可编辑) + 下(正常/只读)</div></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">各版本变更摘要</div>
+        <table>
+            <thead><tr><th>版本</th><th>内容</th><th>状态</th></tr></thead>
+            <tbody>
+                <tr><td>v1</td><td>下拉框自适应 + 握手→打开 + 淡紫配色 + 未连接禁用按钮 + 功能栏数据框+握手</td><td><span class="badge">完成</span></td></tr>
+                <tr><td>v2</td><td>ComboBox min-width 50px + 版本信息框改为上下两QLineEdit(上短可编辑/下正常只读/默认空) + 标题"版本信息"</td><td><span class="badge">完成</span></td></tr>
+                <tr><td>v3</td><td>resize 960×540 确保握手栏一行显示 + 功能栏minHeight 80</td><td><span class="badge">完成</span></td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <div class="card-title">详细变更清单</div>
+        <table>
+            <thead><tr><th>变更点</th><th>版本</th><th>实现</th></tr></thead>
+            <tbody>
+                <tr><td>ComboBox 显示不全</td><td><span class="tag tag-v1">v1</span><span class="tag tag-v2">v2</span></td><td>移除setFixedWidth → AdjustToContents + QSS min-width:50px</td></tr>
+                <tr><td>握手按钮→打开</td><td><span class="tag tag-v1">v1</span></td><td>m_openBtn 文字"打开/关闭"</td></tr>
+                <tr><td>淡紫配色</td><td><span class="tag tag-v1">v1</span></td><td>底色#f0eaf8 面板#e8e0f4 强调#7830b0 文字#503070</td></tr>
+                <tr><td>未连接禁用按钮</td><td><span class="tag tag-v1">v1</span></td><td>sendBtn/sendHexCheck/clearLogBtn/logHexCheck setEnabled(false)</td></tr>
+                <tr><td>版本信息框-上半</td><td><span class="tag tag-v2">v2</span></td><td>QLineEdit verTopEdit, maxWidth 70px, 默认空, 可编辑, 居中</td></tr>
+                <tr><td>版本信息框-下半</td><td><span class="tag tag-v2">v2</span></td><td>QLineEdit verBottomEdit, maxWidth 140px, 默认空, setReadOnly(true), 居中</td></tr>
+                <tr><td>版本信息标题</td><td><span class="tag tag-v2">v2</span></td><td>QGroupBox 标题"数据"→"版本信息"</td></tr>
+                <tr><td>窗口尺寸</td><td><span class="tag tag-v3">v3</span></td><td>resize(640,480) → resize(960,540)</td></tr>
+                <tr><td>功能栏高度</td><td><span class="tag tag-v3">v3</span></td><td>setMinimumHeight(70) → setMinimumHeight(80)</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <div class="card-title">版本信息框控件说明</div>
+        <table>
+            <thead><tr><th>控件</th><th>类型</th><th>宽度</th><th>可编辑</th><th>默认值</th><th>对齐</th></tr></thead>
+            <tbody>
+                <tr><td>上半框</td><td>QLineEdit (verTopEdit)</td><td>70px (~5字符)</td><td>是</td><td>空</td><td>居中</td></tr>
+                <tr><td>下半框</td><td>QLineEdit (verBottomEdit)</td><td>140px (~10字符)</td><td>否(ReadOnly)</td><td>空</td><td>居中</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+</div>
+</body>
+</html>

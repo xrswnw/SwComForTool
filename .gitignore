@@ -1,0 +1,56 @@
+# Build output
+build/
+deploy/
+
+# Qt SDK (本地 Qt 框架, 不入库; 类比硬件项目 Sdk/)
+Qt/
+
+# Backup recycle bin (全局 CLAUDE.md 规则1)
+TrashCan/
+
+# Python virtualenv
+.venv/
+
+# macOS
+.DS_Store
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Multica 运行时脚手架 (平台管理, 不入库)
+.agent_context/
+.multica/
+.claude/skills/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+compile_commands.json
+generated/
+
+# IDE
+.vscode/*.log
+.idea/
+
+# 打包产物 (issue/ 内的构建结果: 自包含 .app / 部署目录 / 分发 zip)
+issue/*.zip
+issue/Mac_Arm64/
+issue/Win_Arm64/
+issue/Win_x64/
+issue/README.txt
+issue/VERSION.txt
+
+# 日志
+aqtinstall.log
+
+# 大尺寸非源码资产 (31MB 设计图, 需要时单独入库)
+Logo.jpg
+
+# 可执行/对象
+*.o
+*.obj
+*.exe
+*.dll
+*.app

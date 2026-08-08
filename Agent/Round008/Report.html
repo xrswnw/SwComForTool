@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ComforTool Round008 报告</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif; background: #f0eaf8; color: #303030; line-height: 1.8; padding: 24px; }
+  .container { max-width: 1000px; margin: 0 auto; }
+  h1 { text-align: center; font-size: 2em; color: #503070; margin-bottom: 8px; }
+  .sub { text-align: center; color: #8870a8; font-size: 0.95em; margin-bottom: 32px; }
+  h2 { color: #7830b0; font-size: 1.35em; margin: 28px 0 12px; border-bottom: 2px solid #d0c0e8; padding-bottom: 6px; }
+  h3 { color: #503070; font-size: 1.1em; margin: 18px 0 8px; }
+  p, li { font-size: 0.96em; }
+  p { margin: 6px 0; }
+  ul, ol { margin: 6px 0 8px 24px; }
+  li { margin: 3px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 0.93em; }
+  th, td { border: 1px solid #c8b8e0; padding: 6px 10px; text-align: left; }
+  th { background: #e0d4f0; color: #503070; font-weight: 600; }
+  tr:nth-child(even) { background: #f8f4ff; }
+  .card { background: #fff; border: 1px solid #d8d0e8; border-radius: 10px; padding: 18px 24px; margin: 14px 0; box-shadow: 0 2px 8px rgba(80,48,112,0.06); }
+  .ok { background: #f0faf0; border: 1px solid #a0d8a0; border-left: 4px solid #50a050; border-radius: 8px; padding: 12px 16px; margin: 12px 0; }
+  .change { background: #fff8e0; border-left: 4px solid #d0a020; border-radius: 8px; padding: 12px 16px; margin: 12px 0; }
+  code { font-family: "Menlo", "Consolas", monospace; background: #f4f0fa; padding: 1px 5px; border-radius: 3px; font-size: 0.9em; color: #503070; }
+  pre { background: #2a1a3a; color: #d8c8e8; padding: 14px; border-radius: 8px; overflow-x: auto; font-family: "Menlo", "Consolas", monospace; font-size: 0.88em; line-height: 1.6; margin: 10px 0; }
+  .ver { color: #a080c0; font-size: 0.82em; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Round008: 升级校验与版本显示修正 — 报告</h1>
+<p class="sub">ComforTool &nbsp;|&nbsp; v1.0 &nbsp;|&nbsp; 2026-05-30</p>
+
+<!-- ============================================================ -->
+<h2>1. 执行概述</h2>
+
+<div class="card">
+<p>3项需求全部完成，编译零错误零警告。</p>
+<table>
+  <tr><th>#</th><th>需求</th><th>状态</th></tr>
+  <tr><td>1</td><td>升级执行后(FC=0x06)设备仍停在BOOT，不重试直接结束</td><td style="color:#308030;font-weight:bold;">✓ 完成</td></tr>
+  <tr><td>2</td><td>地址输入框在版本信息GroupBox内居中</td><td style="color:#308030;font-weight:bold;">✓ 完成</td></tr>
+  <tr><td>3</td><td>版本信息按Layer区分显示</td><td style="color:#308030;font-weight:bold;">✓ 完成</td></tr>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<h2>2. 修改详情</h2>
+
+<h3>2.1 升级执行失败不重试</h3>
+<div class="card">
+<div class="change">
+<p><strong>场景：</strong>FC=0x06升级执行后，设备仍在BOOT(Layer=0)，说明固件虽写入完成但无法启动，重复同样的固件没有意义。</p>
+</div>
+<p><strong>改动：</strong></p>
+<ul>
+  <li>FC=0x06响应Result!=0x00 → <code>endUpgrade(false); return;</code>（原为<code>continue</code>重试）</li>
+  <li>FC=0x06后握手Layer=0 → <code>endUpgrade(false); return;</code>（原为<code>continue</code>重试）</li>
+  <li>FC=0x06后握手失败 → <code>endUpgrade(false); return;</code>（同上）</li>
+</ul>
+<p><strong>保留：</strong>FC=0x03擦除失败、FC=0x04传输失败的重试逻辑不变(最多3次)。</p>
+</div>
+
+<h3>2.2 地址输入框居中</h3>
+<div class="card">
+<p><strong>改动：</strong></p>
+<pre>
+verLayout->setAlignment(m_verTopEdit, Qt::AlignCenter);
+verLayout->setAlignment(m_verBottomEdit, Qt::AlignCenter);
+</pre>
+<p>m_verTopEdit和m_verBottomEdit控件在版本信息GroupBox内水平居中，不再靠左。verBottomEdit最大宽度从140调整为180以容纳更长的版本字符串。</p>
+</div>
+
+<h3>2.3 版本信息按Layer区分显示</h3>
+<div class="card">
+<table>
+  <tr><th>Layer</th><th>显示格式</th><th>示例</th></tr>
+  <tr><td>0 (BOOT)</td><td><code>BOOT_</code> + bootVersion + <code> </code> + hwVersion</td><td><code>BOOT_V1.0 AD_V1.3</code></td></tr>
+  <tr><td>1 (APP)</td><td>hwVersion + <code> </code> + swVersion</td><td><code>AD_V1.3 V1.0</code></td></tr>
+</table>
+<p>同时移除了重复的version string赋值块（原代码有两段重复赋值逻辑）。</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>3. 编译验证</h2>
+
+<div class="card">
+<pre>
+$ make -C build -j4
+[ 22%] Building CXX object CMakeFiles/ComforTool.dir/src/MainWindow.cpp.o
+[ 33%] Linking CXX executable ComforTool
+[100%] Built target ComforTool
+
+零错误零警告 ✓
+</pre>
+</div>
+
+<!-- ============================================================ -->
+<h2>4. 备份同步</h2>
+
+<div class="card">
+<p>修改文件已同步至 <code>/Volumes/Untitled 1/Files/BackupArea/ComforTool/</code></p>
+<ul>
+  <li>src/MainWindow.cpp</li>
+</ul>
+</div>
+
+<p class="ver">Report v1.0 — 2026-05-30 — 升级校验与版本显示修正完成</p>
+
+</div>
+</body>
+</html>

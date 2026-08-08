@@ -1,0 +1,144 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "调试 ComforTool (F5, 跳过USB提权, COM/协议/UI可调试)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/SwComForTool.app/Contents/MacOS/SwComForTool",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "DYLD_FRAMEWORK_PATH",
+                    "value": "${workspaceFolder}/Qt/6.8.3/macos/lib"
+                },
+                {
+                    "name": "DYLD_LIBRARY_PATH",
+                    "value": "${workspaceFolder}/Qt/6.8.3/macos/lib"
+                },
+                {
+                    "name": "QT_PLUGIN_PATH",
+                    "value": "${workspaceFolder}/Qt/6.8.3/macos/plugins"
+                },
+                {
+                    "name": "QT_QPA_PLATFORM",
+                    "value": "cocoa"
+                },
+                {
+                    "name": "COMFORTOOL_NO_ESCALATE",
+                    "value": "1"
+                }
+            ],
+            "preLaunchTask": "构建 Debug",
+            "MIMode": "lldb",
+            "stopAtEntry": false,
+            "setupCommands": [
+                {
+                    "text": "platform select arm64-apple-macosx",
+                    "description": "force arm64 target"
+                }
+            ]
+        },
+        {
+            "name": "调试 ComforTool (不重新编译, 跳过USB提权)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/SwComForTool.app/Contents/MacOS/SwComForTool",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "DYLD_FRAMEWORK_PATH",
+                    "value": "${workspaceFolder}/Qt/6.8.3/macos/lib"
+                },
+                {
+                    "name": "DYLD_LIBRARY_PATH",
+                    "value": "${workspaceFolder}/Qt/6.8.3/macos/lib"
+                },
+                {
+                    "name": "QT_PLUGIN_PATH",
+                    "value": "${workspaceFolder}/Qt/6.8.3/macos/plugins"
+                },
+                {
+                    "name": "QT_QPA_PLATFORM",
+                    "value": "cocoa"
+                },
+                {
+                    "name": "COMFORTOOL_NO_ESCALATE",
+                    "value": "1"
+                }
+            ],
+            "MIMode": "lldb"
+        },
+        {
+            "name": "调试 ComforTool (手动sudo, USB可用)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/SwComForTool.app/Contents/MacOS/SwComForTool",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "DYLD_FRAMEWORK_PATH",
+                    "value": "${workspaceFolder}/Qt/6.8.3/macos/lib"
+                },
+                {
+                    "name": "DYLD_LIBRARY_PATH",
+                    "value": "${workspaceFolder}/Qt/6.8.3/macos/lib"
+                },
+                {
+                    "name": "QT_PLUGIN_PATH",
+                    "value": "${workspaceFolder}/Qt/6.8.3/macos/plugins"
+                },
+                {
+                    "name": "QT_QPA_PLATFORM",
+                    "value": "cocoa"
+                }
+            ],
+            "MIMode": "lldb",
+            "externalConsole": false
+        },
+        {
+            "name": "调试 ComforTool (attach, USB可用, 推荐)",
+            "type": "lldb",
+            "request": "attach",
+            "program": "${workspaceFolder}/build/SwComForTool.app/Contents/MacOS/SwComForTool",
+            "pid": "${command PickProcess}",
+            "preLaunchTask": "构建并启动 ComforTool (普通进程)",
+            "stopOnEntry": false,
+            "sourceLanguages": ["cpp"]
+        },
+        {
+            "name": "调试 ComforTool (attach等待, USB可用, 免选进程)",
+            "type": "lldb",
+            "request": "attach",
+            "program": "${workspaceFolder}/build/SwComForTool.app/Contents/MacOS/SwComForTool",
+            "waitFor": true,
+            "preLaunchTask": "构建并启动 ComforTool (普通进程)",
+            "stopOnEntry": false,
+            "sourceLanguages": ["cpp"]
+        },
+        {
+            "name": "调试 SwComForTool (Windows, F5)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/Release/SwComForTool.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "stopAtEntry": false,
+            "console": "integratedTerminal",
+            "preLaunchTask": "构建 Windows Release"
+        },
+        {
+            "name": "调试 SwComForTool (Windows, 不重新编译)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/Release/SwComForTool.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "stopAtEntry": false,
+            "console": "integratedTerminal"
+        }
+    ]
+}

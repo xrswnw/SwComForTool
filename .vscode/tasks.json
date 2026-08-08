@@ -1,0 +1,67 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "构建 Debug",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "${workspaceFolder}/build",
+                "--config",
+                "Debug",
+                "-j",
+                "8"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": "$gcc"
+        },
+        {
+            "label": "构建并启动 ComforTool (普通进程)",
+            "type": "shell",
+            "command": "sh",
+            "args": [
+                "-c",
+                "pkill -f 'SwComForTool.app/Contents/MacOS/SwComForTool' 2>/dev/null; sleep 1; cmake --build ${workspaceFolder}/build -j 8 && (nohup ${workspaceFolder}/build/SwComForTool.app/Contents/MacOS/SwComForTool > /tmp/comfor_app_stdout.log 2>&1 < /dev/null & disown) ; sleep 2; echo started"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "close": true
+            }
+        },
+        {
+            "label": "构建 Windows Release",
+            "type": "shell",
+            "windows": {
+                "command": "cmd.exe",
+                "args": [
+                    "/c",
+                    "${workspaceFolder}\\build_win.bat"
+                ]
+            },
+            "linux": { "command": "echo", "args": ["Windows-only task"] },
+            "osx": { "command": "echo", "args": ["Windows-only task"] },
+            "problemMatcher": ["$msCompile"],
+            "presentation": { "reveal": "always", "panel": "shared" }
+        },
+        {
+            "label": "CMake 配置 Windows (MSVC, Qt6 arm64)",
+            "type": "shell",
+            "windows": {
+                "command": "cmake",
+                "args": [
+                    "-S", "${workspaceFolder}",
+                    "-B", "${workspaceFolder}/build",
+                    "-DCMAKE_PREFIX_PATH=C:/Qt/6.11.1/msvc2022_arm64",
+                    "-DCOMFORTOOL_ENABLE_USB=ON"
+                ]
+            },
+            "linux": { "command": "echo", "args": ["Windows-only task"] },
+            "osx": { "command": "echo", "args": ["Windows-only task"] },
+            "problemMatcher": []
+        }
+    ]
+}

@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ComforTool Round007 报告</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif; background: #f0eaf8; color: #303030; line-height: 1.8; padding: 24px; }
+  .container { max-width: 1100px; margin: 0 auto; }
+  h1 { text-align: center; font-size: 2em; color: #503070; margin-bottom: 8px; }
+  .sub { text-align: center; color: #8870a8; font-size: 0.95em; margin-bottom: 32px; }
+  h2 { color: #7830b0; font-size: 1.45em; margin: 36px 0 14px; border-bottom: 2px solid #d0c0e8; padding-bottom: 6px; }
+  h3 { color: #503070; font-size: 1.15em; margin: 22px 0 10px; }
+  h4 { color: #6840a0; font-size: 1.05em; margin: 16px 0 8px; }
+  p, li { font-size: 0.96em; }
+  p { margin: 8px 0; }
+  ul, ol { margin: 8px 0 8px 24px; }
+  li { margin: 4px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 0.93em; }
+  th, td { border: 1px solid #c8b8e0; padding: 7px 11px; text-align: left; }
+  th { background: #e0d4f0; color: #503070; font-weight: 600; }
+  tr:nth-child(even) { background: #f8f4ff; }
+  .card { background: #fff; border: 1px solid #d8d8e8; border-radius: 10px; padding: 22px 28px; margin: 18px 0; box-shadow: 0 2px 8px rgba(80,48,112,0.06); }
+  .warn { background: #fff8f0; border: 1px solid #e8c8a0; border-left: 4px solid #d08020; border-radius: 8px; padding: 14px 18px; margin: 14px 0; }
+  .ok { background: #f0faf0; border: 1px solid #a0d8a0; border-left: 4px solid #50a050; border-radius: 8px; padding: 14px 18px; margin: 14px 0; }
+  .info { background: #f4f0fa; border: 1px solid #c8b8e0; border-left: 4px solid #7830b0; border-radius: 8px; padding: 14px 18px; margin: 14px 0; }
+  .err { background: #fff0f0; border: 1px solid #e0a0a0; border-left: 4px solid #c03030; border-radius: 8px; padding: 14px 18px; margin: 14px 0; }
+  code, .code { font-family: "Menlo", "Consolas", monospace; background: #f4f0fa; padding: 1px 5px; border-radius: 3px; font-size: 0.9em; color: #503070; }
+  pre { background: #2a1a3a; color: #d8c8e8; padding: 16px; border-radius: 8px; overflow-x: auto; font-family: "Menlo", "Consolas", monospace; font-size: 0.88em; line-height: 1.6; margin: 12px 0; }
+  .tag { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.82em; font-weight: 600; margin-right: 6px; }
+  .tag-fix { background: #ffd0d0; color: #c03030; }
+  .tag-new { background: #d0f0d0; color: #308030; }
+  .tag-change { background: #ffe8d0; color: #a06020; }
+  .ver { color: #a080c0; font-size: 0.82em; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Round007: 协议更新逻辑修正 — 报告</h1>
+<p class="sub">ComforTool V1.1 → V1.2 &nbsp;|&nbsp; 2026-05-30</p>
+
+<!-- ============================================================ -->
+<h2>1. 执行概述</h2>
+
+<div class="card">
+<p>根据Round007需求和Plan.html中的协议变更，对ComforTool上位机代码进行了以下修正：</p>
+<ul>
+  <li>适配FC=0x03升级启动帧新增校验级别字段</li>
+  <li>适配FC=0x05校验响应扩展为2字节(Result+Detail)</li>
+  <li>适配FC=0x07设备信息响应新格式(版本字符串替代数值编码)</li>
+  <li>FC=0x01握手响应[8]新增baudRate低8位解析</li>
+  <li>版本信息显示增强(HW+SW+BOOT)</li>
+  <li>UI新增校验级别选择(全/中/基本级)</li>
+  <li>升级流程逻辑修正(校验级别传入、2字节响应解析)</li>
+</ul>
+<p><strong>编译结果: 零错误零警告，通过</strong></p>
+</div>
+
+<!-- ============================================================ -->
+<h2>2. 修改清单</h2>
+
+<div class="card">
+<table>
+  <tr><th>#</th><th>文件</th><th>变更</th><th>类型</th></tr>
+  <tr>
+    <td>1</td>
+    <td><code>ProtocolParser.h</code></td>
+    <td>
+      <span class="tag tag-change">变更</span> makeUpgradeStartFrame签名新增verifyLevel参数<br>
+      <span class="tag tag-new">新增</span> DeviceInfo结构体: hwVersion/swVersion/bootVersion/layer/deviceStatus/upgradeCount/baudRate字段<br>
+      <span class="tag tag-new">新增</span> verifyResultToString()、verifyLevelToString()静态方法声明
+    </td>
+    <td>中</td>
+  </tr>
+  <tr>
+    <td>2</td>
+    <td><code>ProtocolParser.cpp</code></td>
+    <td>
+      <span class="tag tag-change">变更</span> makeUpgradeStartFrame: Data新增1字节verifyLevel(偏移[16])<br>
+      <span class="tag tag-fix">重写</span> parseDeviceInfo: 适配新协议格式<br>
+        - [25-40] hwVersion 16B字符串<br>
+        - [41-56] swVersion 16B字符串<br>
+        - [57-72] bootVersion 16B字符串<br>
+        - [18] Layer, [19] deviceStatus, [20] deviceAddr<br>
+        - [21-24] upgradeCount(4B LE), [73-76] baudRate(4B LE)<br>
+      <span class="tag tag-new">新增</span> verifyResultToString(): 校验错误码转文字(Result[0]+Detail[1])<br>
+      <span class="tag tag-new">新增</span> verifyLevelToString(): 校验级别转文字(0=全/1=中/2=基本)
+    </td>
+    <td>大</td>
+  </tr>
+  <tr>
+    <td>3</td>
+    <td><code>MainWindow.h</code></td>
+    <td><span class="tag tag-new">新增</span> QComboBox *m_verifyLevelCombo 成员变量</td>
+    <td>小</td>
+  </tr>
+  <tr>
+    <td>4</td>
+    <td><code>MainWindow.cpp</code></td>
+    <td>
+      <span class="tag tag-new">新增</span> 升级控制栏: 校验级别ComboBox(全级/中级/基本级)<br>
+      <span class="tag tag-change">变更</span> 握手响应: 解析Data[8] baudRateHint，日志显示Layer名称<br>
+      <span class="tag tag-change">变更</span> 设备信息显示: "HW SW [BOOT:Vx.y]"格式<br>
+      <span class="tag tag-change">变更</span> 升级启动: 传入verifyLevel到makeUpgradeStartFrame<br>
+      <span class="tag tag-change">变更</span> 校验响应解析: 读取2字节(Result+Detail)，使用verifyResultToString<br>
+      <span class="tag tag-change">变更</span> flashControls: 升级中禁用verifyLevelCombo<br>
+      <span class="tag tag-change">变更</span> 升级完成: hide状态标签<br>
+    </td>
+    <td>大</td>
+  </tr>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<h2>3. 协议变更适配详情</h2>
+
+<h3>3.1 FC=0x03 升级启动帧</h3>
+<div class="card">
+<pre>
+旧格式: [FwSize 4B][FwCrc32 4B][FwVer 4B][BindVerify 4B] = 16字节
+新格式: [FwSize 4B][FwCrc32 4B][FwVer 4B][BindVerify 4B][VerifyLevel 1B] = 17字节
+                                                                          ↑ 新增
+VerifyLevel:
+  0 = 全级 (CRC32 + Size + MSP/Reset向量 + 绑定校验)
+  1 = 中级 (CRC32 + Size + MSP/Reset向量)
+  2 = 基本级 (CRC32 + Size)
+</pre>
+</div>
+
+<h3>3.2 FC=0x05 校验响应</h3>
+<div class="card">
+<pre>
+旧格式: [Result 1B]
+新格式: [Result 1B][Detail 1B]
+
+Result码:
+  0x00 = 通过
+  0x01 = CRC32不匹配
+  0x02 = 固件大小不匹配
+  0x03 = MSP/Reset向量无效 (Detail: 0=MSP, 1=Reset向量越界)
+  0x04 = 绑定校验失败
+</pre>
+</div>
+
+<h3>3.3 FC=0x07 设备信息响应</h3>
+<div class="card">
+<pre>
+新格式 (偏移0 = Data[0]去掉Result后的位置，实际Data带Result前缀):
+[0]     RESULT_OK
+[1-12]  UID (12B)
+[13-16] deviceUidHash (4B, LE)
+[17]    PROTO_VERSION
+[18]    Layer (0=BOOT, 1=APP)
+[19]    deviceStatus
+[20]    deviceAddr
+[21-24] upgradeCount (4B, LE)
+[25-40] hwVersion (16B, 字符串补零)
+[41-56] swVersion (16B, 字符串补零)
+[57-72] bootVersion (16B, 字符串补零)
+[73-76] baudRate (4B, LE)
+
+移除字段: commMethod, appFirmwareVer(数值), projectName
+新增字段: hwVersion/swVersion/bootVersion字符串, Layer, deviceStatus, upgradeCount, baudRate
+</pre>
+</div>
+
+<h3>3.4 FC=0x01 握手响应</h3>
+<div class="card">
+<pre>
+[0]     RESULT_OK
+[1]     PROTO_VERSION
+[2-5]   deviceUidHash (4B, LE)
+[6]     Layer (0=BOOT, 1=APP)
+[7]     deviceStatus
+[8]     baudRateHint (波特率低8位，仅辅助判断)
+
+变更: [8]原为baudRateIdx，现为baudRate低8位(协议传输优化)
+上位机处理: 解析并日志输出，不影响逻辑(实际波特率由FC=0x07获取)
+</pre>
+</div>
+
+<!-- ============================================================ -->
+<h2>4. UI变更</h2>
+
+<div class="card">
+<h3>4.1 新增校验级别选择</h3>
+<p>升级进度条旁新增ComboBox：<strong>校验级别</strong></p>
+<ul>
+  <li><strong>全级</strong>(默认): CRC32 + Size + MSP/Reset向量 + 绑定校验</li>
+  <li><strong>中级</strong>: CRC32 + Size + MSP/Reset向量（跳过绑定校验）</li>
+  <li><strong>基本级</strong>: CRC32 + Size（仅完整性校验）</li>
+</ul>
+<p>升级进行中ComboBox自动禁用，完成后恢复可操作。Tooltip含各级别说明。</p>
+
+<h3>4.2 版本信息显示增强</h3>
+<p>握手后版本信息框显示格式变更：</p>
+<pre>
+旧: "AD01 V1.0" (projectName + firmwareVersion)
+新: "VET6-A01 V1.3 [BOOT:V1.0]" (hwVersion + swVersion + [BOOT:bootVersion])
+</pre>
+<p>日志同步增加Layer名称、升级次数、波特率信息。</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>5. 数据兼容性</h2>
+
+<div class="card">
+<div class="info">
+<strong>向前兼容说明：</strong>
+<ul>
+  <li>FC=0x03 verifyLevel参数默认值=0(全级)，不传参时行为与旧版一致</li>
+  <li>FC=0x07新格式解析采用渐进式判断(检查data.size()够不够长)，MCU返回旧格式时仍能解析protoVersion和部分字段</li>
+  <li>FC=0x05读取2字节响应时做了size()>=2的安全判断</li>
+  <li>DeviceInfo保留了projectName和firmwareVersion旧字段用于兼容，swVersion/hwVersion自动回填</li>
+</ul>
+</div>
+</div>
+
+<!-- ============================================================ -->
+<h2>6. 编译验证</h2>
+
+<div class="card">
+<pre>
+$ cmake .. -DCMAKE_PREFIX_PATH=Qt/6.8.3/macos
+-- Configuring done (0.1s)
+-- Generating done (0.2s)
+
+$ make -j4
+[  0%] Built target ComforTool_autogen_timestamp_deps
+[ 11%] Automatic MOC and UIC for target ComforTool
+[ 11%] Built target ComforTool_autogen
+[ 33%] Building CXX object CMakeFiles/ComforTool.dir/ComforTool_autogen/mocs_compilation.cpp.o
+[ 33%] Building CXX object CMakeFiles/ComforTool.dir/src/main.cpp.o
+[ 55%] Building CXX object CMakeFiles/ComforTool.dir/src/ProtocolParser.cpp.o
+[ 55%] Building CXX object CMakeFiles/ComforTool.dir/src/MainWindow.cpp.o
+[ 66%] Linking CXX executable ComforTool
+[100%] Built target ComforTool
+
+零错误零警告 ✓
+</pre>
+</div>
+
+<!-- ============================================================ -->
+<h2>7. 备份同步</h2>
+
+<div class="card">
+<p>所有修改文件已同步至 <code>/Volumes/Untitled 1/Files/BackupArea/ComforTool/</code></p>
+<ul>
+  <li>src/ProtocolParser.h</li>
+  <li>src/ProtocolParser.cpp</li>
+  <li>src/MainWindow.h</li>
+  <li>src/MainWindow.cpp</li>
+</ul>
+</div>
+
+<!-- ============================================================ -->
+<h2>8. 修改文件汇总</h2>
+
+<div class="card">
+<table>
+  <tr><th>文件</th><th>行数变化</th><th>修改性质</th></tr>
+  <tr><td>ProtocolParser.h</td><td>+15行</td><td>结构体扩展、新增方法声明</td></tr>
+  <tr><td>ProtocolParser.cpp</td><td>+45/-20行</td><td>帧组装/解析/校验函数适配</td></tr>
+  <tr><td>MainWindow.h</td><td>+2行</td><td>新增成员变量</td></tr>
+  <tr><td>MainWindow.cpp</td><td>+30/-18行</td><td>UI/握手/升级/校验逻辑修正</td></tr>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<h2>9. 遗留与后续</h2>
+
+<div class="card">
+<ul>
+  <li>本轮仅修正上位机协议适配，不涉及MCU端代码(MCU端代码按Plan.html第10节实施)</li>
+  <li>CHUNK_SIZE仍为512字节(可调至1020，但需与MCU端协商一致后修改)</li>
+  <li>Round008需求(BOOT+APP固件更新流程设计)的Plan.html已生成，待确认方案后执行MCU端代码实现</li>
+  <li>校验级别"中级"和"基本级"供调试使用，生产环境应默认"全级"</li>
+</ul>
+</div>
+
+<p class="ver">Report v1.0 — 2026-05-30 — 协议更新逻辑修正完成</p>
+
+</div>
+</body>
+</html>

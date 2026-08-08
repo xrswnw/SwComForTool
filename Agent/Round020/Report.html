@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ComforTool Round020 — START 超时真正根因: 析构崩溃</title>
+<style>
+  body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;line-height:1.7;max-width:1000px;margin:0 auto;padding:24px;background:#f8f5ff;color:#403060}
+  h1{color:#7830b0;border-bottom:2px solid #c8b8e0;padding-bottom:8px}
+  h2{color:#7830b0;margin-top:32px;border-left:4px solid #7830b0;padding-left:10px}
+  h3{color:#a050c0}
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:.92em}
+  th,td{border:1px solid #d8d0e8;padding:7px 11px;text-align:left;vertical-align:top}
+  th{background:#e0d4f0;color:#503070}
+  td{background:#fdfaff}
+  code{font-family:"SF Mono",Menlo,Consolas,monospace;background:#f0ecf8;color:#7830b0;padding:1px 6px;border-radius:3px;font-size:.9em}
+  pre{background:#2d2040;color:#e8e0f8;padding:14px;border-radius:6px;overflow-x:auto;font-size:.85em;line-height:1.5}
+  ul li{margin:4px 0}
+  .tag{display:inline-block;background:#7830b0;color:#fff;padding:2px 9px;border-radius:10px;font-size:.76em;margin-right:4px}
+  .tag-red{background:#c050a0}
+  .tag-green{background:#50a050}
+  .callout{border-left:4px solid #c050a0;background:#fdf0fa;padding:12px 16px;border-radius:0 6px 6px 0;margin:16px 0}
+  .callout-ok{border-color:#50a050;background:#f4faf4}
+</style>
+</head>
+<body>
+
+<h1>ComforTool Round020 — FC_UPGRADE_START 超时真正根因: 析构期崩溃</h1>
+<p><strong>日期:</strong> 2026-07-23 &nbsp;|&nbsp; <strong>版本:</strong> V1.0 &nbsp;|&nbsp; <strong>状态:</strong> 已修复, 备份 Round_094</p>
+
+<h2>一、查 macOS 崩溃报告</h2>
+<p>Round019 修复 hidapi 直接测试 OK, 但用户跑实际二进制仍 15s 超时. 查 <code>/Users/swnw/Library/Logs/DiagnosticReports/SwComForTool-*.ips</code> 发现 <strong>程序在升级过程中崩溃</strong> (Data Abort), 不是 RX 接收问题!</p>
+
+<h3>1.1 崩溃栈 (最新 21:31:59)</h3>
+<pre>ITransport::closed()            (信号 lambda 触发)
+  → HidManagerMac::close()
+    → HidManagerMac::~HidManagerMac()  (析构)
+      → MainWindow::~MainWindow()
+        → QWidget::~QWidget()
+          → QObjectPrivate::deleteChildren()
+            → QMainWindowLayout::statusBar() const
+              <span style="color:#ef4444">[CRASH: Data Abort byte read Translation fault, FAR=0x1800]</span></pre>
+<p><b>异常</b>: Data Abort (ESR=0x92000006). <b>ESR dec</b>: 0x92000006 = Data Abort Write (WnR=1 Wt=0). <b>FAR</b>: 0x1800 (极小地址, use-after-free 残留指针).</p>
+
+<h3>1.2 根因</h3>
+<p><code>MainWindow</code> 析构链中:</p>
+<ol>
+  <li><code>~MainWindow()</code> → Qt 子对象 deleteChildren</li>
+  <li>delete <code>HidManagerMac</code> (MainWindow 子 QObject)</li>
+  <li><code>~HidManagerMac()</code> 调 <code>close()</code></li>
+  <li><code>close()</code> 末尾 <code>emit closed()</code> → 触发 <code>MainWindow::onTransportClosed()</code> lambda</li>
+  <li>lambda 调 <code>statusBar()</code> 在 <b>正在 delete 的 MainWindow</b> 上访问 → Data Abort</li>
+</ol>
+<p>本轮升级失败触发的 close() 让 CFRunLoop 线程析构, 析构链 emit 信号, lambda 访问 UAF.</p>
+
+<h2>二、修复方案</h2>
+<p>最小修复: 析构期间 <code>blockSignals(true)</code>, 阻断 emit closed() 触发 lambda 访问 invalid MainWindow.</p>
+
+<h3>2.1 Fix: ~HidManagerMac blockSignals</h3>
+<p><strong>文件</strong>: <span class="file">src/HidManagerMac.cpp</span></p>
+<pre>// Round 020: 阻止析构期间 emit closed() 触发 lambda 访问正在 delete 的 MainWindow
+HidManagerMac::~HidManagerMac() {
+    blockSignals(true);    // 阻断 emit closed/portError, lambda 不再触发
+    close();                // 停 CFRunLoop, 清 m_rxBuf (内部也 emit closed, 已被 block)
+}</pre>
+<p><code>blockSignals(true)</code> 阻断此 QObject 派发的所有信号, 包括 <code>emit closed()</code>, <code>emit portError()</code>, <code>emit dataReceived()</code>, <code>emit rawReceived()</code>.</p>
+<p><strong>不影响</strong>: 用户主动 close (按连接按钮) 路径不经过析构, closed 信号正常发出, UI 仍正常刷新.</p>
+
+<h2>三、完整修正 Bug 链</h2>
+<table>
+<thead><tr><th>轮次</th><th>Bug</th><th>修复</th></tr></thead>
+<tbody>
+<tr><td>Round 019</td><td>hidmac_input_cb 用 Qt::QueuedConnection, 主线程 msleep 期间事件不派发, 短超时窗口错过 IN report</td><td>input_cb 直接 append + appendRxFrame() public + waitForResponse 1ms 双重 processEvents</td></tr>
+<tr><td><b>Round 020</b></td><td><b>~HidManagerMac 析构 emit closed() lambda, 访问 UAF MainWindow → Data Abort 崩溃</b></td><td><b>析构 blockSignals(true), 阻止 emit closed()/portError() 触发 lambda</b></td></tr>
+</tbody>
+</table>
+
+<h2>四、关键代码变更</h2>
+
+<h3>4.1 HidManagerMac.cpp — 析构拦截信号</h3>
+<pre>HidManagerMac::~HidManagerMac()
+{
+    // 析构 + close 全程 blockSignals
+    blockSignals(true);
+    close();
+}</pre>
+
+<h2>五、同时保留 Round 019 修复</h2>
+<p>Round 019 修复对单 hidapi 测试有效, 但实际运行时 <strong>程序崩溃在到达 START 等待之前</strong> (21:31:00 START TX → 21:31:59 程序崩溃). 崩溃日志 <code>/Users/swnw/Library/Logs/DiagnosticReports/SwComForTool-*.ips</code> 显示异常 ESR=0x92000006 (Data Abort) FAR=0x1800. 因此 Round 020 修复关键.</p>
+
+<p>两个修复**都必需**:</p>
+<ul>
+  <li>Round 019: 避免多线程事件延迟让 IN report 错过</li>
+  <li>Round 020: 避免析构时 emit 触发 UAF 访问崩溃</li>
+</ul>
+
+<h2>六、备份</h2>
+<p>备份位于 <code>/Volumes/Record/Person Code/BackupArea/ComforTool/Round_094_20260723_213715/</code>.</p>
+<p>新二进制: <code>/Users/swnw/Documents/Software/ComforTool/build/SwComForTool.app</code> (21:48 更新).</p>
+
+</body>
+</html>

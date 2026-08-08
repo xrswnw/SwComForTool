@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ComforTool - Round001 执行计划</title>
+    <style>
+        :root {
+            --bg: #1a1a2e;
+            --card-bg: #16213e;
+            --accent: #0f3460;
+            --highlight: #e94560;
+            --text: #eee;
+            --text-dim: #aaa;
+            --green: #4ecca3;
+            --border: #2a2a4a;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.8;
+            padding: 40px 20px;
+        }
+        .container { max-width: 960px; margin: 0 auto; }
+        h1 {
+            text-align: center;
+            font-size: 2em;
+            margin-bottom: 10px;
+            color: var(--green);
+        }
+        .subtitle {
+            text-align: center;
+            color: var(--text-dim);
+            margin-bottom: 40px;
+            font-size: 0.95em;
+        }
+        .phase {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 28px 32px;
+            margin-bottom: 24px;
+        }
+        .phase-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .phase-num {
+            background: var(--highlight);
+            color: white;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.1em;
+            flex-shrink: 0;
+        }
+        .phase-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: var(--green);
+        }
+        .desc {
+            color: var(--text-dim);
+            margin-bottom: 14px;
+            font-size: 0.93em;
+        }
+        .task-list { list-style: none; padding: 0; }
+        .task-list li {
+            padding: 8px 0 8px 28px;
+            position: relative;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+        }
+        .task-list li:last-child { border-bottom: none; }
+        .task-list li::before {
+            content: "☐";
+            position: absolute;
+            left: 0;
+            color: var(--highlight);
+        }
+        .tag {
+            display: inline-block;
+            font-size: 0.75em;
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+        .tag-safe { background: rgba(78,204,163,0.15); color: var(--green); }
+        .tag-setup { background: rgba(233,69,96,0.15); color: var(--highlight); }
+        .tag-qt { background: rgba(100,149,237,0.15); color: cornflowerblue; }
+        .note {
+            background: rgba(233,69,96,0.08);
+            border-left: 3px solid var(--highlight);
+            padding: 12px 16px;
+            border-radius: 0 8px 8px 0;
+            margin-top: 16px;
+            font-size: 0.9em;
+            color: var(--text-dim);
+        }
+        .tree {
+            background: rgba(0,0,0,0.25);
+            border-radius: 8px;
+            padding: 16px 20px;
+            font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+            font-size: 0.85em;
+            line-height: 1.7;
+            margin-top: 14px;
+            color: var(--text-dim);
+            overflow-x: auto;
+        }
+        .tree .dir { color: cornflowerblue; font-weight: 600; }
+        .tree .file { color: var(--green); }
+        .tree .comment { color: #666; }
+        .section-divider {
+            text-align: center;
+            margin: 36px 0;
+            color: var(--border);
+            font-size: 1.5em;
+            letter-spacing: 12px;
+        }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-top: 14px;
+        }
+        .summary-item {
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            padding: 14px 18px;
+        }
+        .summary-item .label { color: var(--text-dim); font-size: 0.85em; }
+        .summary-item .value { color: var(--green); font-size: 1.15em; font-weight: 600; margin-top: 2px; }
+        @media (max-width: 640px) {
+            .summary-grid { grid-template-columns: 1fr; }
+            body { padding: 20px 12px; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <h1>ComforTool - Round001 执行计划</h1>
+    <p class="subtitle">基于Qt的串口通信桌面程序 · 初始搭建</p>
+
+    <!-- ===== 阶段 1 ===== -->
+    <div class="phase">
+        <div class="phase-header">
+            <div class="phase-num">1</div>
+            <div class="phase-title">备份系统搭建</div>
+        </div>
+        <p class="desc">创建备份文件夹并完成初始全量备份，建立变更日志机制。</p>
+        <ul class="task-list">
+            <li>在 <code>/Volumes/Untitled 1/Files/BackupArea/</code> 下创建 <code>ComforTool/</code> 备份目录 <span class="tag tag-safe">备份</span></li>
+            <li>将当前工程全量复制到备份目录 <span class="tag tag-safe">备份</span></li>
+            <li>在备份目录中创建 <code>ChangeLog/</code> 文件夹，用于记录变更日志 <span class="tag tag-safe">备份</span></li>
+            <li>创建变更日志记录脚本 <code>log_change.sh</code>，每次工程文件变更时自动记录：时间、变更文件、变更类型、变更内容摘要 <span class="tag tag-safe">备份</span></li>
+            <li>配置文件监听机制（使用 fswatch 或类似工具监控工程目录变更，触发备份同步和日志记录）<span class="tag tag-safe">备份</span></li>
+        </ul>
+        <div class="note">备份路径优先使用外置硬盘 <code>/Volumes/Untitled 1/Files/BackupArea/ComforTool</code>，已验证可访问。</div>
+    </div>
+
+    <!-- ===== 阶段 2 ===== -->
+    <div class="phase">
+        <div class="phase-header">
+            <div class="phase-num">2</div>
+            <div class="phase-title">工程基础设施</div>
+        </div>
+        <p class="desc">在根目录创建 TrashCan（回收站）、.claude 配置等基础结构。</p>
+        <ul class="task-list">
+            <li>在工程根目录创建 <code>TrashCan/</code> 目录，所有删除操作将文件移至此处而非彻底删除 <span class="tag tag-safe">安全</span></li>
+            <li>创建 <code>.claude/settings.json</code> 配置文件，将常用权限预授权，避免执行中弹窗 <span class="tag tag-setup">配置</span></li>
+            <li>创建 <code>CLAUDE.md</code> 项目说明文件，记录项目规则和约定 <span class="tag tag-setup">配置</span></li>
+        </ul>
+        <div class="note">删除策略：任何需要删除的文件统一移至 TrashCan/，保留原始路径结构以便恢复。</div>
+    </div>
+
+    <!-- ===== 阶段 3 ===== -->
+    <div class="phase">
+        <div class="phase-header">
+            <div class="phase-num">3</div>
+            <div class="phase-title">Qt 项目搭建</div>
+        </div>
+        <p class="desc">创建基于 CMake + Qt6 的桌面应用项目，配置串口通信依赖。</p>
+        <ul class="task-list">
+            <li>确认本机 Qt6 安装情况，如缺失则通过 Homebrew 安装 Qt6 <span class="tag tag-qt">Qt</span></li>
+            <li>创建 CMakeLists.txt，配置 Qt6 Core、Gui、Widgets、SerialPort 模块 <span class="tag tag-qt">Qt</span></li>
+            <li>创建 <code>src/</code> 源码目录结构 <span class="tag tag-qt">Qt</span></li>
+            <li>编写 main.cpp 入口文件 <span class="tag tag-qt">Qt</span></li>
+            <li>编写 MainWindow 主窗口类（.h / .cpp / .ui）<span class="tag tag-qt">Qt</span></li>
+            <li>编写 SerialPortManager 串口管理类（.h / .cpp），封装 QSerialPort 的打开/关闭/收发逻辑 <span class="tag tag-qt">Qt</span></li>
+            <li>配置构建目录 <code>build/</code>，执行首次 CMake 配置和编译，验证项目可构建运行 <span class="tag tag-qt">Qt</span></li>
+        </ul>
+    </div>
+
+    <!-- ===== 阶段 4 ===== -->
+    <div class="phase">
+        <div class="phase-header">
+            <div class="phase-num">4</div>
+            <div class="phase-title">串口通信界面 & 功能实现</div>
+        </div>
+        <p class="desc">实现主窗口的串口选择、打开/关闭、数据收发功能。</p>
+        <ul class="task-list">
+            <li>UI设计：串口选择下拉框 + 刷新按钮 + 打开/关闭按钮 + 波特率选择 <span class="tag tag-qt">Qt</span></li>
+            <li>UI设计：发送区（文本输入 + 发送按钮 + hex发送选项）<span class="tag tag-qt">Qt</span></li>
+            <li>UI设计：接收区（文本显示 + hex显示选项 + 清空按钮 + 自动滚动）<span class="tag tag-qt">Qt</span></li>
+            <li>功能实现：串口枚举与选择 <span class="tag tag-qt">Qt</span></li>
+            <li>功能实现：串口打开/关闭，支持配置波特率/数据位/停止位/校验位 <span class="tag tag-qt">Qt</span></li>
+            <li>功能实现：文本模式 & Hex 模式的数据收发 <span class="tag tag-qt">Qt</span></li>
+            <li>功能实现：接收数据实时显示与自动滚动 <span class="tag tag-qt">Qt</span></li>
+            <li>异常处理：串口断开检测、错误提示、自动重连提示 <span class="tag tag-qt">Qt</span></li>
+        </ul>
+    </div>
+
+    <!-- ===== 阶段 5 ===== -->
+    <div class="phase">
+        <div class="phase-header">
+            <div class="phase-num">5</div>
+            <div class="phase-title">验证 & 报告</div>
+        </div>
+        <p class="desc">编译运行验证，同步最终备份，生成执行报告。</p>
+        <ul class="task-list">
+            <li>完整编译项目，确保零错误零警告 <span class="tag tag-qt">Qt</span></li>
+            <li>运行程序，验证窗口正常显示、串口枚举正确 <span class="tag tag-qt">Qt</span></li>
+            <li>同步最终状态到备份文件夹，补齐所有变更日志 <span class="tag tag-safe">备份</span></li>
+            <li>生成 <code>Report.html</code> 执行报告，记录所有操作、文件变更、最终项目状态 <span class="tag tag-setup">报告</span></li>
+        </ul>
+    </div>
+
+    <div class="section-divider">◆ ◆ ◆</div>
+
+    <!-- ===== 项目结构预览 ===== -->
+    <div class="phase">
+        <div class="phase-header">
+            <div class="phase-num">▸</div>
+            <div class="phase-title">最终项目结构预览</div>
+        </div>
+        <div class="tree">
+<span class="dir">ComforTool/</span>
+├── <span class="dir">.claude/</span>
+│   └── settings.json          <span class="comment"># 权限预授权配置</span>
+├── <span class="dir">Agent/</span>
+│   └── <span class="dir">Round001/</span>
+│       ├── Demand.md          <span class="comment"># 需求文档</span>
+│       ├── Plan.html          <span class="comment"># 本计划文档</span>
+│       └── Report.html        <span class="comment"># 执行报告（执行后生成）</span>
+├── <span class="dir">src/</span>
+│   ├── <span class="file">main.cpp</span>              <span class="comment"># 程序入口</span>
+│   ├── <span class="file">MainWindow.h</span>          <span class="comment"># 主窗口头文件</span>
+│   ├── <span class="file">MainWindow.cpp</span>        <span class="comment"># 主窗口实现</span>
+│   ├── <span class="file">MainWindow.ui</span>          <span class="comment"># 主窗口UI（Qt Designer）</span>
+│   ├── <span class="file">SerialPortManager.h</span>    <span class="comment"># 串口管理头文件</span>
+│   └── <span class="file">SerialPortManager.cpp</span>  <span class="comment"># 串口管理实现</span>
+├── <span class="dir">TrashCan/</span>                   <span class="comment"># 回收站</span>
+├── <span class="file">CMakeLists.txt</span>             <span class="comment"># CMake 构建配置</span>
+├── <span class="file">CLAUDE.md</span>                  <span class="comment"># 项目规则说明</span>
+└── <span class="file">resources.qrc</span>              <span class="comment"># Qt 资源文件（预留）</span>
+        </div>
+    </div>
+
+    <!-- ===== 概要 ===== -->
+    <div class="phase">
+        <div class="phase-header">
+            <div class="phase-num">▸</div>
+            <div class="phase-title">执行概要</div>
+        </div>
+        <div class="summary-grid">
+            <div class="summary-item">
+                <div class="label">技术栈</div>
+                <div class="value">Qt6 + CMake + C++17</div>
+            </div>
+            <div class="summary-item">
+                <div class="label">核心模块</div>
+                <div class="value">Qt SerialPort</div>
+            </div>
+            <div class="summary-item">
+                <div class="label">备份位置</div>
+                <div class="value">/Volumes/Untitled 1/.../ComforTool</div>
+            </div>
+            <div class="summary-item">
+                <div class="label">删除策略</div>
+                <div class="value">移至 TrashCan/（可恢复）</div>
+            </div>
+        </div>
+        <div class="note" style="margin-top:18px">
+            <strong>优化建议：</strong><br>
+            1. 建议后续添加串口数据日志保存功能，可将收发数据导出为文件，便于调试分析。<br>
+            2. 建议后续添加多串口同时连接支持，方便嵌入式开发中同时监控多个设备。<br>
+            3. CMake 构建便于跨平台，后续可轻松适配 Windows/Linux。<br>
+            4. fswatch 文件监控在 macOS 上性能良好，可持续运行不影响开发体验。
+        </div>
+    </div>
+
+</div>
+</body>
+</html>

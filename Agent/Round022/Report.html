@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>ComforTool Windows 适配报告 — Round 022 (Report v1.0)</title>
+<style>
+  body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;max-width:1000px;margin:24px auto;padding:0 20px;color:#222;line-height:1.7;background:#fafafa;}
+  h1{font-size:22px;border-bottom:3px solid #2b6;color:#234;padding-bottom:8px;}
+  h2{font-size:17px;margin-top:26px;border-left:5px solid #2b6;padding-left:10px;background:#eef7ee;}
+  h3{font-size:15px;margin-top:16px;color:#246;}
+  code{background:#eee;padding:1px 5px;border-radius:4px;font-family:ui-monospace,Menlo,monospace;font-size:13px;}
+  pre{background:#1e1e1e;color:#d4d4d4;padding:14px 16px;border-radius:8px;overflow-x:auto;font-size:12.5px;line-height:1.5;}
+  pre .c{color:#6a9955;} pre .k{color:#569cd6;} pre .s{color:#ce9178;}
+  table{border-collapse:collapse;width:100%;margin:10px 0;font-size:13px;}
+  th,td{border:1px solid #bbb;padding:6px 10px;text-align:left;vertical-align:top;}
+  th{background:#2b6;color:#fff;}
+  tr:nth-child(even){background:#f0f6f0;}
+  .tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:10px;color:#fff;margin-right:4px;}
+  .t-new{background:#c70;} .t-edit{background:#36e;} .t-ok{background:#28a745;} .t-warn{background:#f0ad4e;}
+  .ok{background:#d4edda;border-left:4px solid #28a745;padding:8px 12px;margin:10px 0;border-radius:4px;}
+  .risk{background:#fff3cd;border-left:4px solid #f0ad4e;padding:8px 12px;margin:10px 0;border-radius:4px;}
+  .note{background:#eef5ff;border-left:4px solid #2b80c9;padding:8px 12px;margin:10px 0;border-radius:4px;font-size:13px;}
+  .small{font-size:12px;color:#666;}
+  ul{margin:6px 0;} li{margin:3px 0;}
+  .ver{float:right;font-size:13px;color:#888;}
+  .todo{background:#fde8ef;border-left:4px solid #c33;padding:8px 12px;margin:10px 0;border-radius:4px;}
+</style>
+</head>
+<body>
+
+<h1>ComforTool Windows 适配报告 — Round 022 <span class="ver">Report v1.0 &nbsp;|&nbsp; 执行完成, 待 Win 端验证</span></h1>
+
+<div class="ok">
+<b>核心结论</b><br>
+① 代码改动已全部完成，<b>Mac 端 clean 重建通过 + 启动正常 + USB 枚举回归与改动前一致（24 设备 / open=0x0）</b>，Mac 功能不受影响。<br>
+② Windows 适配代码就绪（原生 Win32 HID，无第三方库），<b>Win 端实际编译 + 真机 USB 验证需你在 Windows 机器完成</b>（本机为 macOS，无 MSVC 工具链）。
+</div>
+
+<h2>一、变更清单</h2>
+<table>
+<tr><th>文件</th><th>类型</th><th>变更</th></tr>
+<tr><td>src/HidManager.h</td><td><span class="tag t-new">新增</span></td><td>平台 HID 门面：<code>using HidManager = HidManagerMac / HidManagerWin</code>（按 <code>Q_OS_*</code>）</td></tr>
+<tr><td>src/HidManagerWin.h</td><td><span class="tag t-new">新增</span></td><td>Windows HID 传输接口（与 HidManagerMac 1:1：<code>ITransport</code>+<code>enumerate</code>+<code>appendRxFrame</code>+<code>rawReceived</code>）</td></tr>
+<tr><td>src/HidManagerWin.cpp</td><td><span class="tag t-new">新增</span></td><td>原生 Win32 HID 实现：SetupAPI 枚举 + <code>CreateFile</code>(overlapped) + 读线程 <code>ReadFile</code> + <code>WriteFile</code>，<code>HidP_GetCaps</code> 动态适配报告长度</td></tr>
+<tr><td>src/MainWindow.h</td><td><span class="tag t-edit">编辑</span></td><td>删 <code>class HidManagerMac</code> 前向声明；<code>m_hidManager</code> 类型改 <code>ITransport*</code>（仅用接口，避免别名前向声明冲突）</td></tr>
+<tr><td>src/MainWindow.cpp</td><td><span class="tag t-edit">编辑</span></td><td>include <code>HidManager.h</code>；<code>new HidManagerMac</code>→<code>new HidManager</code>；4 处 <code>HidManagerMac::enumerate</code>→<code>HidManager::enumerate</code>；<code>unistd.h</code> 加 <code>Q_OS_MACOS</code> 守护；<code>/tmp</code> 日志→<code>QDir::tempPath()</code></td></tr>
+<tr><td>CMakeLists.txt</td><td><span class="tag t-edit">编辑</span></td><td>USB 源码按平台选（APPLE→HidManagerMac.cpp / WIN32→HidManagerWin.cpp）；Win 链接 <code>setupapi hid</code></td></tr>
+</table>
+<p class="small">未改动：ProtocolParser、SerialPortManager、HidManagerMac.{h,cpp}（Mac 实现本体保持不变，仅被别名引用）。HidManagerMac.cpp 的 <code>/tmp</code> 调试日志保留（Mac 独有文件，Win 不编译它）。</p>
+
+<h2>二、Mac 端回归验证</h2>
+<div class="ok">
+<b>编译：</b><code>cmake --build . --target SwComForTool --clean-first -j 4</code> → 100% 成功，无 warning/error，ad-hoc 签名正常。<br>
+<b>运行：</b>裸二进制启动，构造期 <code>refreshPorts()</code> 触发枚举：<br>
+<code>[enum_thread] end count=24</code>（open=0x0，与 Round 022 改动前完全一致）<br>
+<b>进程稳定性：</b>启动后 6s 进程 alive，无崩溃。<br>
+<b>结论：Mac 端 USB 枚举功能与改动前等价，红线达成。</b>
+</div>
+<p class="small">注：onOpen/握手/升级需 GUI 手动触发，未自动点击；但 HidManagerMac 实现本体未改动，MainWindow 经 <code>HidManager</code> 别名调用同一对象同一虚函数，路径与改动前等价。</p>
+
+<h2>三、Windows 端实现要点</h2>
+<h3>3.1 Report ID 处理（与 Mac 对齐）</h3>
+<p>设备 Report ID=0、报文 64B、首字节 <code>0x02</code> 为协议前缀。Win32 HID class driver 约定 Report ID=0 设备的缓冲首字节为 Report ID（填 <code>0x00</code>），后接 64B 数据，driver 剥离首字节，设备侧收/发 64B <code>[0x02, &lt;63B 帧&gt;]</code>，与 macOS <code>IOHIDDeviceSetReport(reportID=0, 64B)</code> 等价。</p>
+<ul>
+<li><b>写 (writeData)</b>：缓冲 <code>[0x00, 0x02, &lt;63B 协议帧&gt;]</code>，长度 = <code>OutputReportByteLength</code>(=65)。</li>
+<li><b>读 (读线程)</b>：读回 <code>[0x00, 0x02, &lt;63B 帧&gt;]</code>，剥首字节(Report ID) 后入 <code>appendRxFrame</code>（再剥 0x02，与 Mac 同语义）。</li>
+</ul>
+
+<h3>3.2 报告长度动态适配</h3>
+<p><code>open</code> 时用 <code>HidD_GetPreparsedData</code>+<code>HidP_GetCaps</code> 读取真实 <code>InputReportByteLength</code>/<code>OutputReportByteLength</code>，按其分配读写缓冲，未写死 65（对 Report ID=0 设备该值为 65）。</p>
+
+<h3>3.3 读线程与关闭</h3>
+<p>独立 <code>QThread</code> 跑 overlapped <code>ReadFile</code> 循环（对标 Mac CFRunLoop 工作线程）。<code>close()</code> 设 stop + <code>CancelIoEx</code> 让阻塞读返回 <code>ERROR_OPERATION_ABORTED</code> 后线程退出，再 <code>CloseHandle</code>。</p>
+
+<h2>四、关键风险（Win 端验证重点）</h2>
+<div class="risk">
+<b>⚠ Report ID/报告长度假设需真机确认</b>
+<p>上述 Report ID=0 / 65B / 首字节 0x00 的处理基于设备协议分析与 macOS 行为推断。<b>Win 端首次连接真机时务必核对</b>：</p>
+<ul>
+<li>看 <code>%TEMP%/comfor_win_open.log</code> 的 <code>inLen/outLen</code>（应均为 65）。</li>
+<li>若枚举/连接成功但通信无响应：可能报告对齐不符。回退变体：①写缓冲用 64B <code>[0x02,&lt;63&gt;]</code>（不加 0x00）；②读不剥首字节。届时反馈 inLen/outLen 与现象，我据情调整。</li>
+</ul>
+</div>
+<div class="note">
+<b>其他</b>：Windows 自带 HID 类驱动，SwCcrd(VID 5377/PID 5378) 通常即插即用，无需额外驱动。<code>QSerialPort</code> 跨平台；COM 在 Win 仍不启用（UI 已隐藏）。
+</div>
+
+<h2>五、Win 端验证清单（你来执行）</h2>
+<pre><span class="c"># 1) 配置 (任选一, CMake 自动探测 Qt 路径)</span>
+cmake -B build -S . -DCMAKE_PREFIX_PATH=<span class="s">"C:/Qt/6.8.3/msvc2022_64"</span>
+<span class="c"># 2) 编译</span>
+cmake --build build --config Release -j
+<span class="c"># 3) 运行</span>
+build\Release\SwComForTool.exe   <span class="c"># (或 Debug 路径)</span></pre>
+<table>
+<tr><th>#</th><th>验证项</th><th>预期</th></tr>
+<tr><td>1</td><td>编译通过</td><td>无 error，链接 setupapi/hid 成功</td></tr>
+<tr><td>2</td><td>启动</td><td>窗口正常显示</td></tr>
+<tr><td>3</td><td>USB 枚举（点 Search）</td><td>发现 VID 5377:PID 5378 设备</td></tr>
+<tr><td>4</td><td>连接 + 握手</td><td>状态栏显示"已连接"，版本信息回填</td></tr>
+<tr><td>5</td><td>RFID 读写（14443A/15693）</td><td>读块/写块正常</td></tr>
+<tr><td>6</td><td>固件更新</td><td>升级流程走完，设备重启成功</td></tr>
+</table>
+<p class="small">若某项异常，把 <code>%TEMP%/comfor_win_open.log</code>、<code>comfor_win_read.log</code> 内容与现象发我，我据情调整 Report ID/报告长度处理。</p>
+
+<h2>六、备份记录</h2>
+<ul>
+<li>变更前全量快照：<code>/Volumes/Record/Person Code/BackupArea/ComforTool/Round_103_20260724_224103</code>（223M，≤500M OK）</li>
+<li>轮转：Round_071 已移至 <code>TrashCan/</code>（可恢复）</li>
+<li>Changelog 已追加 Round 103 条目</li>
+</ul>
+
+<h2>七、优化建议（未实施，待你决定）</h2>
+<ul>
+<li>① <code>HidManagerWin</code> 与 <code>HidManagerMac</code> 的 <code>appendRxFrame</code> 逻辑相同，可抽公共基类减少重复（本次为最小改动未抽）。</li>
+<li>② 调试日志（<code>comfor_*.log</code>）可改为统一可关闭的日志宏，减少临时文件碎片。</li>
+<li>③ 长期若要彻底统一 HID 层可评估 <code>hidapi</code> 跨平台库，但本次保持原生 API 与 Mac 风格一致，不引入第三方。</li>
+<li>④ Win 端可用 <code>windeployqt</code> 打包依赖 DLL，便于分发（本次未做，可后续单列）。</li>
+</ul>
+
+<h2>八、版本记录</h2>
+<ul><li><b>v1.0</b> 初始执行报告。Win 端真机验证结果回来后可追加 v1.1（标注 Report ID 实测结论与可能的调整）。</li></ul>
+
+<p class="small">—— Claude Code, Round 022 · ComforTool Windows 适配 · 已完成 Mac 端回归, 待 Win 端验证</p>
+
+</body>
+</html>

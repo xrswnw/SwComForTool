@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ComforTool - Round003 执行报告</title>
+    <style>
+        :root { --bg:#160e24; --card:#221838; --border:#3a2860; --text:#c8b0e8; --dim:#8a78a8; --accent:#c070ff; --accent2:#d090ff; }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:-apple-system,"PingFang SC",sans-serif; background:var(--bg); color:var(--text); line-height:1.8; padding:40px 20px; }
+        .container { max-width:960px; margin:0 auto; }
+        h1 { text-align:center; color:var(--accent); margin-bottom:30px; }
+        .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:24px 28px; margin-bottom:20px; }
+        .card-title { font-size:1.15em; font-weight:600; color:var(--accent); margin-bottom:12px; }
+        table { width:100%; border-collapse:collapse; font-size:0.9em; }
+        th, td { padding:8px 12px; text-align:left; border-bottom:1px solid var(--border); }
+        th { color:var(--dim); font-weight:500; }
+        .badge { display:inline-block; font-size:0.72em; padding:2px 10px; border-radius:99px; font-weight:600; }
+        .badge-ok { background:rgba(192,112,255,0.15); color:var(--accent); }
+        .grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:10px 0; }
+        .item { background:rgba(0,0,0,0.2); border-radius:8px; padding:12px 16px; }
+        .item .label { color:var(--dim); font-size:0.82em; }
+        .item .value { font-size:1.05em; font-weight:600; margin-top:2px; }
+        .preview { background:#0e0818; border:1px solid var(--border); border-radius:8px; padding:14px; font-family:"SF Mono",monospace; font-size:0.72em; line-height:1.6; color:var(--text); margin-top:10px; overflow-x:auto; }
+        .preview .time { color:#5a4878; }
+        .preview .tx { color:#c070ff; font-weight:bold; }
+        .preview .rx { color:#c8b0e8; }
+        .swatch { display:inline-block; width:20px; height:20px; border-radius:4px; vertical-align:middle; margin-right:6px; border:1px solid var(--border); }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <h1>ComforTool - Round003 执行报告</h1>
+
+    <div class="card">
+        <div class="card-title">总体概况</div>
+        <div class="grid">
+            <div class="item"><div class="label">编译状态</div><div class="value" style="color:#c070ff">零错误零警告</div></div>
+            <div class="item"><div class="label">窗口尺寸</div><div class="value">640 × 480（可调）</div></div>
+            <div class="item"><div class="label">配色方案</div><div class="value"><span class="swatch" style="background:#c070ff"></span>D. 极光紫</div></div>
+            <div class="item"><div class="label">日志区</div><div class="value">[RX]/[TX] + 毫秒时间戳</div></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">各阶段执行结果</div>
+        <table>
+            <thead><tr><th>阶段</th><th>内容</th><th>状态</th></tr></thead>
+            <tbody>
+                <tr><td>1</td><td>窗口比例修正 (1280×960 → 640×480)</td><td><span class="badge badge-ok">完成</span></td></tr>
+                <tr><td>2</td><td>极光紫配色 QSS 全局样式</td><td><span class="badge badge-ok">完成</span></td></tr>
+                <tr><td>3</td><td>接收区→日志区重构 ([TX]/[RX]+时间戳)</td><td><span class="badge badge-ok">完成</span></td></tr>
+                <tr><td>4</td><td>编译验证+备份+报告</td><td><span class="badge badge-ok">完成</span></td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <div class="card-title">详细变更</div>
+        <table>
+            <thead><tr><th>文件</th><th>变更</th><th>说明</th></tr></thead>
+            <tbody>
+                <tr><td>src/MainWindow.h</td><td>修改</td><td>m_receiveDisplay→m_logDisplay, appendReceived→appendLog(prefix,data,color)，新增 applyStylesheet()</td></tr>
+                <tr><td>src/MainWindow.cpp</td><td>重写</td><td>resize(640,480)；极光紫全局QSS(底色#160e24/面板#221838/强调#c070ff)；日志区替代接收区：appendLog()用HTML富文本，[RX]普通色+[TX]强调色+毫秒时间戳；sendData()发送后立即写日志</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <div class="card-title">极光紫配色色板</div>
+        <table>
+            <tbody>
+                <tr><td><span class="swatch" style="background:#160e24"></span>底色</td><td>#160e24</td><td>QMainWindow / QWidget 背景</td></tr>
+                <tr><td><span class="swatch" style="background:#221838"></span>面板</td><td>#221838</td><td>QComboBox / QPushButton 背景</td></tr>
+                <tr><td><span class="swatch" style="background:#c070ff"></span>强调</td><td>#c070ff</td><td>[TX]文字 / 发送按钮 / GroupBox标题</td></tr>
+                <tr><td><span class="swatch" style="background:#c8b0e8"></span>文字</td><td>#c8b0e8</td><td>[RX]文字 / 全局文字</td></tr>
+                <tr><td><span class="swatch" style="background:#0e0818"></span>日志底</td><td>#0e0818</td><td>日志区 QTextEdit 背景</td></tr>
+                <tr><td><span class="swatch" style="background:#3a2860"></span>边框</td><td>#3a2860</td><td>GroupBox / 输入控件边框</td></tr>
+                <tr><td><span class="swatch" style="background:#5a4878"></span>时间戳</td><td>#5a4878</td><td>日志时间戳文字色</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <div class="card-title">日志区效果预览</div>
+        <div class="preview"><span class="time">21:30:05.123</span> <span class="rx">[RX]</span> Hello from device
+<span class="time">21:30:06.456</span> <span class="tx">[TX]</span> AT+VER?
+<span class="time">21:30:06.789</span> <span class="rx">[RX]</span> FW v2.1.0 OK
+<span class="time">21:30:08.001</span> <span class="tx">[TX]</span> AT+RESET
+<span class="time">21:30:08.120</span> <span class="rx">[RX]</span> RESET OK</div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">新增功能说明</div>
+        <table>
+            <thead><tr><th>功能</th><th>实现</th></tr></thead>
+            <tbody>
+                <tr><td>日志时间戳</td><td>每条日志前缀 HH:mm:ss.zzz（QTime::currentTime）</td></tr>
+                <tr><td>[TX] 标记</td><td>发送数据时自动写入日志区，强调色(#c070ff)粗体</td></tr>
+                <tr><td>[RX] 标记</td><td>接收数据自动标记，普通色(#c8b0e8)</td></tr>
+                <tr><td>Hex显示</td><td>勾选后日志区内容以十六进制显示（适用于[TX]和[RX]）</td></tr>
+                <tr><td>HTML富文本</td><td>时间戳/前缀/内容分别着色，通过 QTextEdit::append(html) 实现</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+</div>
+</body>
+</html>

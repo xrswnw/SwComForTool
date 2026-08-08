@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>ComforTool Round0011 报告</title>
+<style>
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; max-width: 1100px; margin: 0 auto; padding: 20px; background: #f8f5ff; color: #403060; line-height: 1.65; }
+  h1 { color: #7830b0; border-bottom: 2px solid #c8b8e0; padding-bottom: 8px; }
+  h2 { color: #7830b0; margin-top: 32px; border-left: 4px solid #7830b0; padding-left: 10px; }
+  h3 { color: #a050c0; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+  th, td { border: 1px solid #d8d0e8; padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: #e0d4f0; color: #503070; }
+  td { background: #fdfaff; }
+  .task { background: #f4f0fa; border-left: 4px solid #7830b0; padding: 12px 16px; margin: 14px 0; border-radius: 4px; }
+  .file { font-family: Menlo, monospace; color: #7830b0; background: #f0ecf8; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+  .tag { display: inline-block; background: #7830b0; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 0.75em; margin-right: 4px; }
+  .tag-green { background: #50a050; }
+  .tag-orange { background: #d08020; }
+  .tag-red { background: #c050a0; }
+  .tag-blue { background: #3070b0; }
+  pre { background: #2d2040; color: #e8e0f8; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.85em; line-height: 1.5; }
+  code { font-family: Menlo, monospace; background: #f0ecf8; padding: 1px 5px; border-radius: 2px; font-size: 0.9em; }
+  .check { color: #50a050; font-weight: bold; }
+  .warn { color: #c050a0; font-weight: bold; }
+  .skip { color: #888; }
+  ul li { margin: 4px 0; }
+</style>
+</head>
+<body>
+
+<h1>ComforTool Round0011 — 执行报告</h1>
+<p><strong>日期:</strong> 2026-07-17 ~ 2026-07-18 &nbsp;|&nbsp; <strong>版本:</strong> V1.0 &nbsp;|&nbsp; <strong>状态:</strong> 已完成 ✅</p>
+
+<h2>需求实现总览</h2>
+<table>
+  <tr><th>#</th><th>需求</th><th>状态</th></tr>
+  <tr><td>1</td><td>建立自己的备份脚本 (backup.sh)</td><td><span class="tag tag-green">完成</span></td></tr>
+  <tr><td>2</td><td>通信接口增加选项 (COM/USB-HID)</td><td><span class="tag tag-green">完成</span></td></tr>
+  <tr><td>3</td><td>协议帧头改为 0x53 0x77 (CRC 保持 MPEG-2)</td><td><span class="tag tag-green">完成</span></td></tr>
+  <tr><td>4</td><td>追加 15693 协议 + HID 分片协议</td><td><span class="tag tag-green">完成</span></td></tr>
+  <tr><td>5</td><td>USB 上进入 BOOT 后自动重连</td><td><span class="tag tag-green">完成</span></td></tr>
+  <tr><td>追加</td><td>macOS 提权 (osascript/AEWP)</td><td><span class="tag tag-green">完成</span>（后改 daemon 架构）</td></tr>
+  <tr><td>追加</td><td>普通 GUI + root daemon IPC 架构</td><td><span class="tag tag-green">完成</span></td></tr>
+  <tr><td>追加</td><td>发送区一问一答 + 操作状态左下角</td><td><span class="tag tag-green">完成</span></td></tr>
+</table>
+
+<h2>已完成的核心任务</h2>
+
+<!-- Task 1 -->
+<div class="task">
+<h3>Task 1: backup.sh 备份脚本 <span class="tag tag-green">基建</span></h3>
+<p><strong>文件:</strong> <span class="file">backup.sh</span></p>
+<p><strong>功能:</strong></p>
+<ul>
+  <li>全量快照, 32 层轮转, 500MB 单层上限</li>
+  <li>白名单 (src/ res/ docs/ icon/ issue/ deploy/ Agent/ + 根脚本)</li>
+  <li>排除 build/ Qt/ .venv/ TrashCan/ .claude/</li>
+  <li>大小写不敏感检测 Changelog 目录</li>
+  <li>写入 Changelog/Changelog.log (独立于 Round 目录, 不参与轮转)</li>
+  <li>自动从 /Volumes/Untitled 1 路径回退到 ~/Documents/BackupArea</li>
+</ul>
+<p><strong>已生成 Round 备份:</strong> Round_001 ~ Round_010, 各 ~103M</p>
+</div>
+
+<!-- Task 3 -->
+<div class="task">
+<h3>Task 3: 协议帧头对齐 Sw01 <span class="tag tag-red">协议</span></h3>
+<p><strong>文件:</strong> <span class="file">src/ProtocolParser.h/.cpp</span></p>
+<ul>
+  <li>帧头: 0x44 0x41 → <strong>0x53 0x77</strong></li>
+  <li>CRC32: <strong>保持 MPEG-2</strong> (poly=0x04C11DB7, MSB-first, 无反射, 无最终 XOR)</li>
+  <li>实测: 握手响应 CRC = <code>1F EB BB 22</code> 与计算完全一致 ✅</li>
+  <li>CRC 错误时 <code>parseFrame</code> 仍返回 <code>valid=true</code> (兼容设备附加 data 的合并回传场景)</li>
+</ul>
+</div>
+
+<!-- Task 2 -->
+<div class="task">
+<h3>Task 2: ITransport 抽象 + HID 通信 <span class="tag tag-blue">架构</span></h3>
+<p><strong>文件:</strong> <span class="file">src/ITransport.h, src/HidManager.h/.cpp</span></p>
+<ul>
+  <li><strong>ITransport 接口:</strong> open/close/writeData/readAll/waitForBytesWritten</li>
+  <li><strong>SerialPortManager</strong> 实现 ITransport (Qt SerialPort)</li>
+  <li><strong>USB 实现演进:</strong>
+    <ul>
+      <li><span class="skip">v1: hidapi 走 IOHID — 设备枚举不到</span></li>
+      <li><span class="tag tag-blue">v2: libusb 中断端点直连 (EP1 IN 0x81 + EP2 OUT 0x02)</span></li>
+    </ul>
+  </li>
+  <li><strong>macOS 挑战:</strong> HID 接口被 Apple HID driver 占用, 需 root</li>
+  <li><strong>原始字节打印:</strong> <code>rawReceived</code> 信号, 调试用显示 [RX] (HID原始)</li>
+</ul>
+</div>
+
+<!-- Task 5 -->
+<div class="task">
+<h3>Task 5: 升级流程 + USB 重连 <span class="tag tag-orange">逻辑</span></h3>
+<p><strong>文件:</strong> <span class="file">src/MainWindow.cpp</span></p>
+<ul>
+  <li>升级 helper 改用 <code>ITransport*</code> 抽象</li>
+  <li>USB 模式下发 ENTER_BOOT 后, 关闭旧 handle + 重新枚举 HID 设备 + 重连 (≤10s)</li>
+  <li>固件传输 <code>CHUNK_SIZE = 48</code> (USB HID 单包 63B 内安全)</li>
+  <li>执行升级后再重连 (类似流程)</li>
+</ul>
+</div>
+
+<!-- Task 4 -->
+<div class="task">
+<h3>Task 4: 15693 协议 + HID 分片 <span class="tag">协议</span></h3>
+<p><strong>文件:</strong> <span class="file">src/ProtocolParser.h/.cpp</span></p>
+<ul>
+  <li>15693 子命令 0x00~0x08 (Inventory/ReadBlock/WriteBlock/DSFID/EAS/Lock/StayQuiet/WriteAFI/LockAFI)</li>
+  <li>通用 <code>makeRfidFrame(devAddr, subCmd, params)</code></li>
+  <li>便捷: makeRfidInventory / ReadBlock / WriteBlock / Dsfid / Eas / LockBlock / StayQuiet / WriteAfi / LockAfi</li>
+  <li>响应解析: <code>parseRfidResponse</code> 识别 [subCmd][seq][total][payload] 分片头</li>
+  <li>分片重组器 <code>RfidFragReassembler</code>: 按 (devAddr, subCmd) 缓存, total 片全到合并</li>
+  <li>错误码转文字: <code>rfidResultToString</code></li>
+  <li><strong>UI 操作按钮未实现</strong> (按需求 4 留待后续触发)</li>
+</ul>
+</div>
+
+<!-- Architecture rewrite -->
+<div class="task">
+<h3>架构改造: 普通 GUI + root daemon IPC <span class="tag tag-blue">架构</span></h3>
+<p><strong>背景:</strong> macOS 上 root GUI 进程无法连 WindowServer (Qt Cocoa fatal), AEWP 启动 root GUI 不可行</p>
+<p><strong>文件:</strong> <span class="file">src/HidServer.h/.cpp, src/HidClient.h/.cpp, src/main.cpp</span></p>
+<ul>
+  <li><strong>HidServer (root daemon, --server 模式):</strong>
+  <ul>
+    <li>libusb 中断端点直连, 监听 <code>/tmp/comfortool_usb.sock</code></li>
+    <li>支持 ENUM / OPEN / CLOSE / WRITE / READ 命令</li>
+    <li>异步数据推送 (DATA 行)</li>
+    <li>Warm-up: 启动后睡眠 500ms + dummy write + 300ms</li>
+  </ul>
+  </li>
+  <li><strong>HidClient (普通用户 GUI):</strong>
+  <ul>
+    <li>实现 ITransport, 通过 socket 与 daemon 通信</li>
+    <li>同步 poll socket + 解析 m_pending 中的 DATA 行</li>
+    <li>剥 0x02 前缀</li>
+  </ul>
+  </li>
+  <li><strong>main.cpp:</strong>
+  <ul>
+    <li><code>--server</code> 模式: AEWP 启动 root daemon (无 GUI, AEWP 稳定)</li>
+    <li>GUI 模式: 检测 socket 路径, 通过 HidClient 通信</li>
+    <li>调试旁路: <code>COMFORTOOL_NO_ESCALATE=1</code> 跳过提权</li>
+  </ul>
+  </li>
+</ul>
+</div>
+
+<!-- Other -->
+<div class="task">
+<h3>辅助改进 <span class="tag tag-green">UX</span></h3>
+<ul>
+  <li><strong>F5 调试支持:</strong> .vscode/launch.json 提供多个调试配置, 默认带 <code>COMFORTOOL_NO_ESCALATE=1</code></li>
+  <li><strong>发送区一问一答:</strong> USB 模式发送后自动等响应 (2s), <code>dataReceived</code> 信号触发 RX 日志</li>
+  <li><strong>操作描述左下角:</strong> 升级状态从进度条右侧移到独立小行 (左对齐, 紫色, 0.82em)</li>
+  <li><strong>枚举全量 HID:</strong> USB 下显示所有 HID 设备 (不再只过滤 Sw01)</li>
+  <li><strong>DEVICE_INFO 兼容简化 12B:</strong> parseDeviceInfo 支持 12B 简化和 77B 标准两种格式</li>
+</ul>
+</div>
+
+<h2>构建与测试结果</h2>
+
+<h3>编译</h3>
+<pre>[100%] Built target ComforTool</pre>
+<p>macOS Qt 6.8.3 + libusb-1.0 + Security.framework, 单 target ComforTool.app/Contents/MacOS/ComforTool</p>
+
+<h3>USB 通信验证</h3>
+<table>
+  <tr><th>项目</th><th>结果</th><th>依据</th></tr>
+  <tr><td>USB 枚举</td><td><span class="check">✅</span></td><td><code>uid=501 发现 3 个HID设备</code> (含 SwCcrd)</td></tr>
+  <tr><td>握手</td><td><span class="check">✅</span></td><td><code>握手成功: DevAddr=0X01, Proto=2, Layer=1(APP), Status=IDLE, BaudRate=115200</code></td></tr>
+  <tr><td>CRC 校验</td><td><span class="check">✅</span></td><td><code>1F EB BB 22</code> 与计算完全一致</td></tr>
+  <tr><td>DEVICE_INFO</td><td><span class="check">✅</span></td><td><code>设备信息: , Layer=1(APP), 升级次数=509539931, 波特率=115200</code></td></tr>
+  <tr><td>发送区一问一答</td><td><span class="check">✅</span></td><td>发送握手帧 → 200ms 内收到响应 (raw + 剥前缀)</td></tr>
+  <tr><td>0x02 前缀剥除</td><td><span class="check">✅</span></td><td>RX 显示 剥前缀后的帧 (以 0x53 0x77 开头)</td></tr>
+</table>
+
+<h2>遇到的关键问题与解决</h2>
+
+<h3>1. macOS root GUI 不可行</h3>
+<p><strong>现象:</strong> AEWP 启动 root GUI 进程在 QCoreApplication 构造时 fatal (缺少 WindowServer 访问)</p>
+<p><strong>解决:</strong> 架构改造为 <strong>普通 GUI + root daemon + Unix Socket IPC</strong>。AEWP 仅用于启动 daemon (无 GUI), GUI 永远以普通用户跑。</p>
+
+<h3>2. DEVICE_INFO 响应 FC 不符合协议</h3>
+<p><strong>现象:</strong> 设备响应 <code>FC=0x86</code>, 协议应为 <code>0x07^0xFF=0xF8</code></p>
+<p><strong>解决:</strong> 兼容判断 <code>fc==0x86 || fc==0xF8</code></p>
+
+<h3>3. 设备合并回传多帧</h3>
+<p><strong>现象:</strong> 单 HID 包包含 HANDSHAKE 帧(23B) + DEVICE_INFO 帧(23B) + 后续 data 字节</p>
+<p><strong>解决:</strong> parseFrame 容忍 CRC 错误 (设备 CRC 计算范围可能含附加 data), 解析循环按字节扫描找 0x53 0x77 头, 取完整 buffer 作为 device info data</p>
+
+<h3>4. 启动时序 EP stall</h3>
+<p><strong>现象:</strong> 第一次 open 后立即发握手, 设备未响应</p>
+<p><strong>解决:</strong> open 中加 warm-up (500ms sleep + dummy write + 300ms sleep), HidServer/HidManager 共用</p>
+
+<h3>5. dataReceived 递归 emit 死机</h3>
+<p><strong>现象:</strong> HidClient readAll emit dataReceived → lambda 同步调 onReadyRead → readAll → emit → 递归</p>
+<p><strong>解决:</strong> setTransportSignals connect 用 <code>Qt::QueuedConnection</code></p>
+
+<h2>文件改动清单</h2>
+<table>
+<tr><th>文件</th><th>类型</th><th>改动</th></tr>
+<tr><td><span class="file">backup.sh</span></td><td>新增</td><td>备份脚本 (Round 轮转, 白名单, Changelog)</td></tr>
+<tr><td><span class="file">CMakeLists.txt</span></td><td>修改</td><td>COMFORTOOL_ENABLE_USB, hidapi→libusb, Qt Network, Security.framework</td></tr>
+<tr><td><span class="file">src/main.cpp</span></td><td>重写</td><td>分发 --server / --client, AEWP 启动 daemon, env 注入</td></tr>
+<tr><td><span class="file">src/ITransport.h</span></td><td>新增</td><td>传输抽象接口</td></tr>
+<tr><td><span class="file">src/SerialPortManager.h/.cpp</span></td><td>修改</td><td>实现 ITransport</td></tr>
+<tr><td><span class="file">src/HidManager.h/.cpp</span></td><td>新增</td><td>USB HID (libusb 中断端点, 备选方案, 已被 HidClient 替代主路径)</td></tr>
+<tr><td><span class="file">src/HidClient.h/.cpp</span></td><td>新增</td><td>socket client (实现 ITransport, GUI 端 USB)</td></tr>
+<tr><td><span class="file">src/HidServer.h/.cpp</span></td><td>新增</td><td>root daemon (libusb + Unix Socket)</td></tr>
+<tr><td><span class="file">src/ProtocolParser.h/.cpp</span></td><td>重写</td><td>帧头 0x53 0x77, CRC 校验, 15693 + 分片重组, DEVICE_INFO 兼容</td></tr>
+<tr><td><span class="file">src/MainWindow.h/.cpp</span></td><td>重写</td><td>接口选择 UI, ITransport 切换, 升级 USB 重连, 操作状态左下角, 发送区一问一答</td></tr>
+<tr><td><span class="file">src/Version.h.in</span></td><td>不变</td><td>版本 1.2.0 (CMake)</td></tr>
+<tr><td><span class="file">.vscode/launch.json</span></td><td>重写</td><td>三个 F5 调试配置 (默认不提权)</td></tr>
+<tr><td><span class="file">build_win.bat</span></td><td>修改</td><td>改 hidapi→libusb, vcpkg install libusb</td></tr>
+</table>
+
+<h2>备份快照</h2>
+<table>
+<tr><th>Round</th><th>大小</th><th>说明</th></tr>
+<tr><td>Round_001</td><td>旧扁平</td><td>迁移旧备份归档</td></tr>
+<tr><td>Round_002</td><td>103M</td><td>本轮变更前基线</td></tr>
+<tr><td>Round_003</td><td>103M</td><td>osascript 提权方案</td></tr>
+<tr><td>Round_004</td><td>103M</td><td>AEWP 提权 + env 注入</td></tr>
+<tr><td>Round_005</td><td>103M</td><td>架构改造 (普通 GUI + daemon IPC)</td></tr>
+<tr><td>Round_010</td><td>103M</td><td>USB 通信完全打通</td></tr>
+</table>
+
+<h2>未完成 / 后续</h2>
+<ul>
+  <li><strong>15693 UI 操作按钮:</strong> 协议层已实现, 操作按钮 (盘点/读块/写块等) 待后续触发</li>
+  <li><strong>设备真卡验证:</strong> 15693 协议层无法实卡验证, 待卡插入后联调</li>
+  <li><strong>升级流程实测:</strong> USB 升级 + 进 BOOT 自动重连代码已实现, 未跑完整固件升级流程</li>
+  <li><strong>Windows hidapi / Linux libusb:</strong> CMake 已配置, 仅 macOS 验证通过</li>
+  <li><strong>设备协议规范偏差:</strong> DEVICE_INFO 响应实际 FC=0x86 (规范 0xF8), CRC 计算范围含附加 data, 与 Sw01 协议文档不一致 (按设备实际行为适配)</li>
+</ul>
+
+<h2>使用说明</h2>
+<h3>F5 调试 (跳过 USB 提权)</h3>
+<pre>VSCode 启动 -> "调试 ComforTool (F5, 跳过USB提权, COM/协议/UI可调试)"
+COMFORTOOL_NO_ESCALATE=1 ./ComforTool.app/Contents/MacOS/ComforTool</pre>
+
+<h3>USB 联调 (sudo 启动)</h3>
+<pre>sudo ./ComforTool.app/Contents/MacOS/ComforTool
+# 切到 USB 接口 -> 刷新 -> 握手
+# 发送框输入 hex -> 发送 -> 自动等响应</pre>
+
+<h3>生产模式 (AEWP 自动提权)</h3>
+<pre>双击 ComforTool.app
+# 系统弹密码框 -> 输密码 -> daemon 以 root 启动 -> GUI 连接
+# 切 USB 接口 -> 刷新 -> 操作</pre>
+
+</body>
+</html>

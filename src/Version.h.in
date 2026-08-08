@@ -1,0 +1,3 @@
+#pragma once
+
+#define COMFORTOOL_VERSION "@COMFORTOOL_VERSION@"

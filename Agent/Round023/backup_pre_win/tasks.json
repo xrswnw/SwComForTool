@@ -1,0 +1,36 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "构建 Debug",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "${workspaceFolder}/build",
+                "--config",
+                "Debug",
+                "-j",
+                "8"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": "$gcc"
+        },
+        {
+            "label": "构建并启动 ComforTool (普通进程)",
+            "type": "shell",
+            "command": "sh",
+            "args": [
+                "-c",
+                "pkill -f 'SwComForTool.app/Contents/MacOS/SwComForTool' 2>/dev/null; sleep 1; cmake --build ${workspaceFolder}/build -j 8 && (nohup ${workspaceFolder}/build/SwComForTool.app/Contents/MacOS/SwComForTool > /tmp/comfor_app_stdout.log 2>&1 < /dev/null & disown) ; sleep 2; echo started"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "close": true
+            }
+        }
+    ]
+}

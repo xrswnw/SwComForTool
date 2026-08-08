@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ComforTool - Round004 执行计划</title>
+    <style>
+        :root{--bg:#f0eaf8;--card:#e8e0f4;--border:#c8b8e0;--text:#503070;--dim:#8870a8;--accent:#7830b0;--accent2:#9060c0;--white:#fff}
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:-apple-system,"PingFang SC",sans-serif;background:var(--bg);color:var(--text);line-height:1.8;padding:40px 20px}
+        .container{max-width:960px;margin:0 auto}
+        h1{text-align:center;color:var(--accent);margin-bottom:8px}
+        .ver{text-align:center;color:var(--dim);font-size:.85em;margin-bottom:30px}
+        .phase{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:22px 26px;margin-bottom:18px}
+        .ph{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+        .num{background:var(--accent);color:#fff;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:.9em;flex-shrink:0}
+        .pt{font-size:1.1em;font-weight:600;color:var(--accent)}
+        .desc{color:var(--dim);font-size:.88em;margin-bottom:8px}
+        ul{list-style:none;padding:0}
+        ul li{padding:4px 0 4px 22px;position:relative}
+        ul li::before{content:"☐";position:absolute;left:0;color:#c050a0}
+        .note{background:rgba(120,48,176,0.06);border-left:3px solid var(--accent);padding:8px 12px;border-radius:0 8px 8px 0;margin-top:10px;font-size:.85em;color:var(--dim)}
+        .append-tag{display:inline-block;background:rgba(200,80,120,0.12);color:#c050a0;font-size:.7em;padding:2px 8px;border-radius:4px;margin-left:8px;font-weight:600}
+        /* UI 渲染预览 */
+        .ui-render{background:var(--white);border:2px solid var(--border);border-radius:10px;overflow:hidden;max-width:640px;margin:12px auto 0;font-size:13px;box-shadow:0 2px 12px rgba(80,48,112,0.08)}
+        .ui-bar{padding:6px 10px;display:flex;align-items:center;gap:6px;background:var(--card);border-bottom:1px solid var(--border);flex-wrap:wrap}
+        .ui-bar label{opacity:.7;font-size:.85em}
+        .ui-select{background:var(--white);border:1px solid var(--border);border-radius:3px;padding:2px 6px;color:var(--text);font-size:.85em;min-width:40px}
+        .ui-btn{background:var(--accent);color:#fff;border:none;border-radius:4px;padding:3px 10px;font-weight:bold;font-size:.85em;cursor:default}
+        .ui-btn-outline{background:var(--white);color:var(--accent);border:1px solid var(--border);border-radius:4px;padding:3px 10px;font-size:.85em}
+        .ui-func{display:flex;align-items:center;padding:8px 10px;background:var(--card);border-bottom:1px solid var(--border);gap:10px;min-height:54px}
+        .ui-func-left{flex:1;color:var(--dim);font-style:italic;font-size:.85em}
+        .ui-versions{display:flex;flex-direction:column;gap:4px;align-items:center}
+        .ui-input-sm{background:var(--white);border:1px solid var(--border);border-radius:3px;padding:2px 4px;color:var(--text);font-family:"Menlo",monospace;font-size:.8em;text-align:center;width:60px}
+        .ui-input-md{background:#f4f0fa;border:1px solid var(--border);border-radius:3px;padding:2px 4px;color:var(--dim);font-family:"Menlo",monospace;font-size:.8em;text-align:center;width:120px}
+        .ui-log{background:#f8f4ff;padding:8px 10px;font-family:"Menlo",monospace;font-size:.75em;line-height:1.5;color:#503070;min-height:60px}
+        .ui-log .time{color:#b0a0c8}
+        .ui-log .tx{color:#7830b0;font-weight:bold}
+        .ui-log .rx{color:#503070}
+        .ui-send{display:flex;align-items:center;padding:6px 10px;gap:6px;background:var(--card);border-top:1px solid var(--border)}
+        .ui-send-input{background:var(--white);border:1px solid var(--border);border-radius:3px;padding:3px 6px;flex:1;color:var(--text);font-size:.85em}
+        .ui-status{padding:3px 10px;background:var(--white);font-size:.75em;color:var(--dim);border-top:1px solid var(--border)}
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <h1>Round004 执行计划</h1>
+    <p class="ver">v1 原始需求 | v2 追加修正 | v3 追加UI拉伸</p>
+
+    <!-- ===== v1 原始需求 ===== -->
+    <div class="phase">
+        <div class="ph"><div class="num">1</div><div class="pt">修正下拉框显示不全 + 握手→打开</div></div>
+        <p class="desc">下拉框宽度太小导致文字截断；"握手"按钮改为"打开"</p>
+        <ul>
+            <li>移除各ComboBox的setFixedWidth，改用setMinimumWidth + setSizeAdjustPolicy(AdjustToContents) <span class="append-tag">v1</span></li>
+            <li>所有 ComboBox QSS 添加 min-width: 50px 保证波特率等完整显示 <span class="append-tag">v2 追加</span></li>
+            <li>初始窗口 resize(640,480)→resize(960,540)，确保握手栏全部元素保持在一行 <span class="append-tag">v3 追加</span></li>
+            <li>顶部按钮文字 "握手"→"打开" / "关闭" <span class="append-tag">v1</span></li>
+        </ul>
+    </div>
+
+    <div class="phase">
+        <div class="ph"><div class="num">2</div><div class="pt">配色改为淡紫色</div></div>
+        <p class="desc">淡紫/薰衣草色系，白底清爽</p>
+        <ul>
+            <li>底色 #f0eaf8，面板 #e8e0f4，强调 #7830b0，文字 #503070 <span class="append-tag">v1</span></li>
+            <li>日志底 #f8f4ff，边框 #c8b8e0 <span class="append-tag">v1</span></li>
+        </ul>
+    </div>
+
+    <div class="phase">
+        <div class="ph"><div class="num">3</div><div class="pt">未连接时禁用发送/日志按钮</div></div>
+        <p class="desc">串口未打开时发送、清空、Hex等按钮不可用</p>
+        <ul>
+            <li>初始/断开：发送、Hex发送、清空日志、Hex显示 setEnabled(false) <span class="append-tag">v1</span></li>
+            <li>已连接：全部 setEnabled(true) <span class="append-tag">v1</span></li>
+        </ul>
+    </div>
+
+    <div class="phase">
+        <div class="ph"><div class="num">4</div><div class="pt">功能栏右侧：版本信息框 + 握手按钮</div></div>
+        <p class="desc">功能栏右侧添加"版本信息"区域：上半框（短，默认空，可输入）+ 下半框（正常长度，默认空，不可写）+ 握手按钮</p>
+        <ul>
+            <li>功能栏高度增加 <span class="append-tag">v1</span></li>
+            <li>左侧保留预留区域 <span class="append-tag">v1</span></li>
+            <li>上半框：QLineEdit，宽度约5字符(缩小一半)，默认空，可编辑，居中 <span class="append-tag">v2 追加</span></li>
+            <li>下半框：QLineEdit(setReadOnly)，宽度约10字符(与原一致)，默认空，居中 <span class="append-tag">v2 追加</span></li>
+            <li>外层 QGroupBox 标题改为"版本信息" <span class="append-tag">v2 追加</span></li>
+            <li>右侧握手按钮（与顶部"打开"功能相同）<span class="append-tag">v1</span></li>
+        </ul>
+    </div>
+
+    <!-- ===== UI 渲染预览 ===== -->
+    <div class="phase">
+        <div class="ph"><div class="num">▸</div><div class="pt">UI 设计渲染预览</div></div>
+        <p class="desc">以下为修正后的完整界面布局预览，请确认后执行</p>
+
+        <div class="ui-render">
+            <!-- 握手栏 -->
+            <div class="ui-bar">
+                <label>通信接口:</label>
+                <select class="ui-select"><option>cu.usbserial-110 - USB Serial</option></select>
+                <button class="ui-btn-outline">刷新</button>
+                <label>波特率:</label>
+                <select class="ui-select"><option>115200</option></select>
+                <label>数据位:</label>
+                <select class="ui-select"><option>8</option></select>
+                <label>停止位:</label>
+                <select class="ui-select"><option>1</option></select>
+                <label>校验:</label>
+                <select class="ui-select"><option>无</option></select>
+                <button class="ui-btn">打开</button>
+                <span style="color:var(--dim);font-size:.8em">未连接</span>
+            </div>
+            <!-- 功能栏 -->
+            <div class="ui-func">
+                <div class="ui-func-left">功能模块预留区域</div>
+                <div style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;display:flex;flex-direction:column;gap:3px;align-items:center">
+                    <div style="font-weight:bold;color:var(--accent);font-size:.7em;margin-bottom:2px">版本信息</div>
+                    <input class="ui-input-sm" value="" placeholder="_____" readonly>
+                    <input class="ui-input-md" value="" placeholder="______________" readonly>
+                </div>
+                <button class="ui-btn" style="padding:8px 12px">握手</button>
+            </div>
+            <!-- 日志区 -->
+            <div class="ui-log">
+                <div><span class="time">21:30:05.123</span> <span class="rx">[RX]</span> Hello from device</div>
+                <div><span class="time">21:30:06.456</span> <span class="tx">[TX]</span> AT+VER?</div>
+                <div><span class="time">21:30:06.789</span> <span class="rx">[RX]</span> FW v2.1.0 OK</div>
+            </div>
+            <!-- 发送区 -->
+            <div class="ui-send">
+                <input class="ui-send-input" value="AT+RESET" readonly>
+                <label style="font-size:.8em"><input type="checkbox"> Hex</label>
+                <button class="ui-btn">发送</button>
+            </div>
+            <div class="ui-status">日志区 &nbsp;☐Hex显示 &nbsp;[清空]</div>
+        </div>
+    </div>
+
+    <div class="phase">
+        <div class="ph"><div class="num">5</div><div class="pt">编译验证 & 报告</div></div>
+        <ul>
+            <li>编译零错误零警告，运行测试</li>
+            <li>同步备份+变更日志</li>
+            <li>生成 Report.html（含v2追加版本区分）</li>
+        </ul>
+    </div>
+</div>
+</body>
+</html>

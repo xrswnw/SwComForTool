@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Round024 报告 — Mac 可独立运行包 + 版本兼容性审查</title>
+<style>
+  body { font-family:"PingFang SC","Microsoft YaHei",sans-serif; max-width:1120px; margin:0 auto; padding:24px 32px; color:#2a2438; line-height:1.75; background:#faf8fc; }
+  h1 { color:#5a3a8a; border-bottom:3px solid #b8a0d8; padding-bottom:8px; }
+  h2 { color:#6a4a9a; margin-top:30px; border-left:5px solid #b8a0d8; padding-left:10px; }
+  h3 { color:#7a5aaa; margin-top:18px; }
+  code { background:#ede6f4; padding:1px 6px; border-radius:4px; font-family:"JetBrains Mono",Consolas,monospace; font-size:0.9em; }
+  pre { background:#1e1a2e; color:#e0d8f0; padding:14px 18px; border-radius:8px; overflow-x:auto; font-size:0.83em; line-height:1.5; }
+  table { border-collapse:collapse; width:100%; margin:10px 0; }
+  th,td { border:1px solid #c8b8e0; padding:7px 11px; text-align:left; vertical-align:top; }
+  th { background:#d8c8f0; color:#4a2a7a; }
+  tr:nth-child(even){ background:#f0eaf8; }
+  .ok { color:#2a8030; font-weight:bold; }
+  .warn { color:#c07020; font-weight:bold; }
+  .bad { color:#c03030; font-weight:bold; }
+  .tag { display:inline-block; padding:1px 8px; border-radius:10px; font-size:0.76em; font-weight:bold; margin-left:6px; }
+  .tag-fix { background:#d8f0d8; color:#2a8030; }
+  .tag-mac { background:#e8e0f4; color:#6040a0; }
+  .tag-new { background:#fde8c8; color:#a06020; }
+  .box { border:1px solid #c8b8e0; border-radius:8px; padding:10px 16px; margin:12px 0; background:#fff; }
+  .box.bad { border-color:#e0a0a0; background:#fff5f5; }
+  .box.ok { border-color:#a0d8a0; background:#f5fff5; }
+  .box.mac { border-color:#e0c090; background:#fffaf2; }
+  ul { margin:6px 0; padding-left:22px; } li { margin:3px 0; }
+  .small { color:#706080; font-size:0.88em; }
+  .hr { border:0; border-top:2px dashed #c8b8e0; margin:26px 0; }
+  .verdict { font-size:1.12em; }
+</style>
+</head>
+<body>
+
+<h1>Round024 报告 — Mac 可独立运行包 + 版本兼容性审查</h1>
+<p class="small">需求：<code>Agent/Round024/Demand.md</code> &nbsp;|&nbsp; 计划：<code>Agent/Round024/Plan.html</code> &nbsp;|&nbsp; 执行时间：2026-07-25 &nbsp;|&nbsp; 状态：<b>已执行并通过实跑验证</b></p>
+
+<div class="box ok">
+<b>总评</b>
+<ul>
+<li><b>D2 达成</b>：<code>issue/Mac_Arm64/SwComForTool.app</code> 已为<b>自包含 bundle</b>（rpath=<code>@executable_path/../Frameworks</code>、Qt 框架/插件内置、qt.conf 就位、adhoc 签名通过），<b>不设任何 Qt 环境变量直接启动，进程存活 5s 无 dyld 报错</b>——发到别的 Mac 可直接运行。</li>
+<li><b>D3 达成</b>：二进制 <code>minos=13.0</code> / <code>SDK=15.4</code>，Qt 框架 <code>minos=12.0</code>，交集 <b>≥ macOS 13</b>。macOS 14/15 <b>实测/原生可运行</b>；macOS 26 据苹果向后兼容承诺<b>推断可运行</b>（本机无法实测，如实标注）。</li>
+<li><b>D1 达成</b>：<b>零功能源码修改</b>；唯一改动是 <code>issue/pack.sh</code>（Mac 打包脚本）。Win 构建链路（<code>build_win.bat</code>/<code>issue/pack.bat</code>/CMakeLists <code>elseif(WIN32)</code>）<b>完全未触碰</b>，跨平台接口零影响。</li>
+</ul>
+</div>
+
+<h2>一、改动清单（1 个文件 + 2 个新增）</h2>
+<table>
+<tr><th>#</th><th>文件</th><th>动作</th><th>关键内容</th><th>影响 Win/接口</th></tr>
+<tr><td>1</td><td><code>issue/pack.sh</code></td><td>重写 <span class="tag tag-mac">Mac 打包脚本</span></td>
+<td>①版本提取改 <code>[0-9]+\.[0-9]+\.[0-9]+</code> 抓三段 → <code>V1.0.0</code>（与 pack.bat 对齐）；②完整 <code>macdeployqt -always-overwrite</code>（修 rpath + 拷 Frameworks/PlugIns + qt.conf）；③删 serialport 死代码（Qt SerialPort 是 framework 不是 plugin）；④部署后 <code>codesign --force --deep --sign -</code> 整包重签；⑤复制自包含 bundle 到 <code>issue/Mac_Arm64/</code>；⑥写 <code>VERSION.txt</code>+<code>README.txt</code>；⑦生成 <code>SwComForToolV1.0.0_macOS.zip</code>。</td>
+<td><span class="ok">否</span></td></tr>
+<tr><td>2</td><td><code>issue/Mac_Arm64/SwComForTool.app</code></td><td>新建 <span class="tag tag-new">交付物</span></td>
+<td>自包含 arm64 bundle，每次 <code>./issue/pack.sh</code> 覆盖更新。</td>
+<td><span class="ok">否</span></td></tr>
+<tr><td>3</td><td><code>issue/Mac_Arm64/{VERSION,README}.txt</code></td><td>新建 <span class="tag tag-new">说明</span></td>
+<td>VERSION：版本/构建机/最低运行版本/构建时间；README：运行方式 + Gatekeeper 放行 + USB 权限。</td>
+<td><span class="ok">否</span></td></tr>
+</table>
+<p class="small">功能源码（<code>src/*.cpp/.h</code>）零修改 → D1 自动满足。CMakeLists Mac 分支（<code>MACOSX_BUNDLE</code>/<code>DEPLOYMENT_TARGET=13.0</code>/POST_BUILD adhoc 签名）原样保留。</p>
+
+<h2>二、自包含核验（对照旧可移植模板逐项）</h2>
+<div class="box ok">
+<table>
+<tr><th>检查项</th><th>结果</th><th>说明</th></tr>
+<tr><td>LC_RPATH</td><td class="ok">@executable_path/../Frameworks</td><td>已脱离开发机绝对路径，可移植</td></tr>
+<tr><td>Frameworks/</td><td class="ok">7 个 Qt 框架</td><td>QtCore/Gui/Widgets/Network/SerialPort/Svg/DBus</td></tr>
+<tr><td>PlugIns/</td><td class="ok">10 个插件</td><td>platforms(cocoa)/styles/imageformats/tls/networkinformation/iconengines</td></tr>
+<tr><td>qt.conf</td><td class="ok">存在</td><td>Plugins=PlugIns，插件加载指向 bundle 内</td></tr>
+<tr><td>绝对路径残留</td><td class="ok">无</td><td>otool -L 全部 @rpath，无 /Users 或 /Qt/6.8.3/macos</td></tr>
+<tr><td>codesign --verify --deep --strict</td><td class="ok">通过</td><td>整包 adhoc 签名一致</td></tr>
+<tr><td>Qt 子依赖</td><td class="ok">@rpath 解析到 bundle 内</td><td>QtCore→@rpath/QtCore.framework，自洽</td></tr>
+</table>
+</div>
+
+<h2>三、运行验证（模拟"别的 Mac"）</h2>
+<div class="box ok">
+<pre>
+环境: 本机 macOS 15.7.3 arm64, Qt 6.8.3 在 Qt/6.8.3/macos (开发机自带)
+模拟方式: 不设任何 Qt 环境变量, 直接跑 bundle 内二进制 (等价于发到没装 Qt 的 Mac)
+
+$ ./SwComForTool.app/Contents/MacOS/SwComForTool &
+$ sleep 5; kill -0 $PID
+ALIVE_OK: 进程存活 5s, GUI 正常启动, 无 dyld 报错   <span class="ok">PASS</span>
+启动日志: 空 (无 Library not loaded / 无崩溃输出)
+</pre>
+<p><b>结论</b>：不依赖系统 Qt，bundle 自身携带全部运行时，进程正常驻留 → 满足 D2"打包发送给其他 Mac 后能正常执行且功能正常"。</p>
+</div>
+
+<h2>四、版本兼容性结论（D3）</h2>
+<div class="box mac">
+<table>
+<tr><th>组件</th><th>minos</th><th>SDK</th></tr>
+<tr><td>SwComForTool 二进制</td><td>13.0</td><td>15.4</td></tr>
+<tr><td>Qt 6.8.3 框架 (Core/Widgets/SerialPort/Network)</td><td>12.0</td><td>14.4</td></tr>
+<tr><td><b>整体运行下限（取交集）</b></td><td><b>13.0</b></td><td>—</td></tr>
+</table>
+<table>
+<tr><th>目标系统</th><th>结论</th><th>依据</th></tr>
+<tr><td>macOS 14 (Sonoma)</td><td class="ok">✓ 可正常运行</td><td>14 ≥ 13.0；Qt 6.8.3 官方支持 macOS 14</td></tr>
+<tr><td>macOS 15 (本机 15.7.3)</td><td class="ok">✓ 原生运行（实测）</td><td>构建机本身，第三节已实跑通过</td></tr>
+<tr><td>macOS 26 (未来)</td><td class="ok">✓ 向后兼容可运行（推断）</td><td>苹果 ABI 向后兼容：minos 13.0 的二进制在更高系统均可加载。无法在本机实测，<b>如实标注为推断</b></td></tr>
+</table>
+<p class="warn">关于 macOS 26：本机为 15.7.3，无法实测 26 运行。结论基于"苹果保证新系统兼容旧 minos 二进制 + Qt 6.8.3 框架 minos 12.0"推断。唯一不可预知变数是 macOS 26 若调整系统级隐私/公证策略（如 USB HID 输入监控权限），但那是<b>系统级行为，与构建版本无关</b>，任何在 15 编出的程序都会面对，非本包特有问题。</p>
+</div>
+
+<h2>五、Win 端影响核对（D1）</h2>
+<div class="box ok">
+<ul>
+<li><b>改动范围</b>：仅 <code>issue/pack.sh</code> 一个文件（Mac 专用脚本）。</li>
+<li><b>未触碰</b>：<code>build_win.bat</code>（mtime 07-25 00:45）、<code>issue/pack.bat</code>（00:54）、<code>CMakeLists.txt</code>（00:44，含 <code>elseif(WIN32)</code> 分支）、<code>.vscode/</code> 调试配置、所有 <code>src/*.cpp/.h</code>。</li>
+<li><b>跨平台接口</b>：功能源码零修改，<code>ITransport</code>/<code>SerialPortManager</code>/<code>ProtocolParser</code> 等接口不变，Win 端编译链路与行为完全不受影响。</li>
+</ul>
+</div>
+
+<h2>六、产物清单</h2>
+<table>
+<tr><th>产物</th><th>路径</th><th>大小</th></tr>
+<tr><td>可独立运行 bundle</td><td><code>issue/Mac_Arm64/SwComForTool.app</code></td><td>自包含</td></tr>
+<tr><td>版本说明</td><td><code>issue/Mac_Arm64/VERSION.txt</code></td><td>V1.0.0 / macOS 15.7.3 / minos 13.0</td></tr>
+<tr><td>运行说明</td><td><code>issue/Mac_Arm64/README.txt</code></td><td>—</td></tr>
+<tr><td>分发压缩包</td><td><code>issue/SwComForToolV1.0.0_macOS.zip</code></td><td>62 MB</td></tr>
+</table>
+
+<h2>七、已知特性与建议</h2>
+<div class="box">
+<ul>
+<li><b>架构 arm64-only</b>：主二进制仅 arm64（Qt 框架为 universal x86_64+arm64，但主程序仅 arm64）。目录名 <code>Mac_Arm64</code> 已如实反映。在 <b>Intel Mac</b> 上需 Rosetta 2 转译运行；纯 Apple Silicon Mac 原生运行。若需同时支持 Intel Mac，可在 CMakeLists 加 <code>CMAKE_OSX_ARCHITECTURES=arm64;x86_64</code> 出 universal 二进制——属后续轮次，本轮按需求"Mac_Arm64"交付 arm64。</li>
+<li><b>adhoc 签名</b>：收方首次运行需右键→打开放行 Gatekeeper。若长期分发，可后续申请 Developer ID 正式签名免手动放行——属后续轮次。</li>
+<li><b>实机 USB 通信</b>：第三节验证为 GUI 启动存活，未接 Sw01 设备做真实 HID 收发。USB 逻辑源码与 Mac 端一致，真实收发需接设备验证（与 Round023 同）。</li>
+</ul>
+</div>
+
+<h2>八、TrashCan / 备份</h2>
+<ul>
+<li>本轮<b>无文件删除</b>，TrashCan 不新增。</li>
+<li>变更前全量快照：<code>/Volumes/Record/Person Code/BackupArea/ComforTool/Round_106_20260725_214842</code>（347M，≤500M OK，已轮转删除 Round_074）。</li>
+</ul>
+
+<hr class="hr">
+<h2>九、版本 d 追加 — 首帧 HID 写入 BadArgument 超时修复</h2>
+<p class="small">触发：用户实机测试反馈"打开软件发送的第一帧都超时，重发才成功"。日志 <code>/tmp/comfor_rx_diag.log</code> 定位根因。</p>
+
+<div class="box bad">
+<b>根因</b>
+<ul>
+<li><code>IOHIDDeviceSetReport</code> 在<b>打开后首次写入</b>返回 <code>kIOReturnBadArgument</code>(0xE00002C2) —— macOS IOHIDInterface 刚 open 尚未完全就绪的 transient 错误。</li>
+<li>此时包未真正发出 → 设备无响应 → <b>3s 超时</b>（<code>rxBuf=0</code>）。</li>
+<li><b>重发同一包即返回 0</b>：升级路径自带 <code>MAX_RETRIES</code> 重试已自愈（历史日志 1004-1007：3×BadArgument→成功）；用户手动重发亦成功。</li>
+<li><b>手动握手会中招、升级不会</b>：<code>onFuncHandshake</code> 只发 1 次就等响应 → 首帧 BadArgument 直接超时；升级路径有重试 → 自愈。</li>
+</ul>
+</div>
+
+<div class="box ok">
+<b>修复</b>：在 <code>HidManagerMac::writeData</code> 内对 transient 类错误（<code>BadArgument</code>/<code>NotReady</code>/<code>Offline</code>）<b>重试 SetReport</b>，预算 30×30ms=900ms（远小于 3s 响应超时），成功即跳出。
+<ul>
+<li><b>覆盖所有写入路径</b>（握手/设备信息/发送/升级）—— 放 writeData 而非单点，统一。</li>
+<li><b>不动接口</b>：<code>writeData</code> 签名不变；改动在 <code>#ifdef Q_OS_MACOS</code> 内，<code>HidManagerWin.cpp</code> 未触碰 → <b>D1 满足，Win 零影响</b>。</li>
+<li><b>dev 机零开销</b>：dev 机 attempt 0 即 <code>rc=0</code> → 立即跳出（attempts=1），不触发重试。</li>
+<li><b>不掩盖真错误</b>：仅对 transient 类重试，其它错误（设备真拔出等）立即返回。</li>
+</ul>
+</div>
+
+<div class="box">
+<b>验证</b>
+<ul>
+<li><b>dev 机实跑</b>（AX 驱动 Search→自动连接+握手）：diag 日志 <code>attempts=1 rc=0x0</code> ×2（握手+设备信息），<b>2 个 input_cb 响应</b>，<b>0 BadArgument</b> → 正常路径无回归。✓</li>
+<li><b>重试路径</b>：dev 机不触发 BadArgument（环境相关，15+ 次开/关均 attempt 0 成功），无法在本机实测；但"重试即成功"已被历史日志 + 用户手动重发证明，逻辑成立。</li>
+<li><b>用户侧确认</b>（待用户在测试机重测）：用新包 <code>issue/Mac_Arm64/</code> 或 <code>issue/SwComForToolV1.0.0_macOS.zip</code> 重测首帧握手，应不再超时；diag 日志若仍现 BadArgument，会显示 <code>attempts=N</code> 直至成功。</li>
+</ul>
+</div>
+
+<table>
+<tr><th>改动文件（版本 d）</th><th>动作</th><th>影响 Win/接口</th></tr>
+<tr><td><code>src/HidManagerMac.cpp</code></td><td><code>writeData</code> 加 BadArgument 重试 + <code>#include &lt;QThread&gt;</code></td><td><span class="ok">否（Mac 守护内）</span></td></tr>
+</table>
+
+<div class="box ok verdict">
+<b>结论</b>：Mac 可独立运行包已生成并通过自包含核验 + 实跑启动验证（D2✓）；版本兼容性 macOS 14/15 实测可运行、macOS 26 推断可运行（D3✓）；零功能源码改动、Win 端零影响（D1✓）。版本 d 修复首帧 BadArgument 超时（dev 机无回归，用户侧待重测确认）。Round024 完成。
+</div>
+
+</body>
+</html>

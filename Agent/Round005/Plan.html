@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ComforTool - Round005 执行计划</title>
+    <style>
+        :root{--bg:#f0eaf8;--card:#e8e0f4;--border:#c8b8e0;--text:#503070;--dim:#8870a8;--accent:#7830b0;--warn:#c050a0}
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:-apple-system,"PingFang SC",sans-serif;background:var(--bg);color:var(--text);line-height:1.8;padding:40px 20px}
+        .container{max-width:1000px;margin:0 auto}
+        h1{text-align:center;color:var(--accent);margin-bottom:6px}
+        .ver{text-align:center;color:var(--dim);font-size:.85em;margin-bottom:30px}
+        .phase{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:22px 26px;margin-bottom:16px}
+        .ph{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+        .num{background:var(--accent);color:#fff;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:.9em;flex-shrink:0}
+        .pt{font-size:1.05em;font-weight:600;color:var(--accent)}
+        .desc{color:var(--dim);font-size:.88em;margin-bottom:8px}
+        ul{list-style:none;padding:0}
+        ul li{padding:3px 0 3px 22px;position:relative}
+        ul li::before{content:"☐";position:absolute;left:0;color:#c050a0;font-size:.85em}
+        .note{background:rgba(120,48,176,0.06);border-left:3px solid var(--accent);padding:8px 12px;border-radius:0 8px 8px 0;margin-top:10px;font-size:.85em;color:var(--dim)}
+        .warn{background:rgba(200,80,160,0.06);border-left:3px solid var(--warn);padding:8px 12px;border-radius:0 8px 8px 0;margin-top:10px;font-size:.85em;color:var(--warn)}
+        .ui-render{background:#fff;border:2px solid var(--border);border-radius:10px;overflow:hidden;max-width:960px;margin:12px auto 0;font-size:13px}
+        .ui-bar{padding:5px 10px;display:flex;align-items:center;gap:5px;background:var(--card);border-bottom:1px solid var(--border);flex-wrap:wrap}
+        .ui-bar label{opacity:.7;font-size:.82em}
+        .ui-sel{background:var(--white);border:1px solid var(--border);border-radius:3px;padding:2px 5px;color:var(--text);font-size:.82em;min-width:40px}
+        .ui-btn{background:var(--accent);color:#fff;border:none;border-radius:4px;padding:3px 9px;font-weight:bold;font-size:.82em;cursor:default}
+        .ui-btn-outline{background:#fff;color:var(--accent);border:1px solid var(--border);border-radius:4px;padding:3px 9px;font-size:.82em}
+        .ui-func{display:flex;align-items:center;padding:6px 10px;background:var(--card);border-bottom:1px solid var(--border);gap:8px;min-height:72px}
+        .ui-func-left{flex:1;color:var(--dim);font-size:.82em;font-style:italic}
+        .ui-verbox{display:flex;flex-direction:column;gap:2px;align-items:center}
+        .ui-in{background:#f8f4ff;border:1px solid var(--border);border-radius:3px;padding:2px 4px;font-family:"Menlo",monospace;font-size:.8em;text-align:center;color:var(--text)}
+        .ui-log{background:#f8f4ff;padding:8px 10px;font-family:"Menlo",monospace;font-size:.73em;line-height:1.5;color:#503070;min-height:50px}
+        .ui-log .time{color:#b0a0c8}
+        .ui-log .tx{color:#7830b0;font-weight:bold}
+        .ui-log .rx{color:#503070}
+        .ui-log .info{color:#8870a8;font-style:italic}
+        .ui-send{display:flex;align-items:center;padding:5px 10px;gap:5px;background:var(--card);border-top:1px solid var(--border)}
+        .ui-send input{background:#fff;border:1px solid var(--border);border-radius:3px;padding:2px 5px;flex:1;color:var(--text);font-size:.82em}
+        .ui-status{padding:3px 10px;background:#fff;font-size:.73em;color:var(--dim);border-top:1px solid var(--border)}
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Round005 执行计划</h1>
+    <p class="ver">协议解析 · 握手 · 固件更新 · 日志保存</p>
+
+    <!-- ===== 阶段1: 协议解析引擎 ===== -->
+    <div class="phase">
+        <div class="ph"><div class="num">1</div><div class="pt">协议解析引擎 (ProtocolParser)</div></div>
+        <p class="desc">新建ProtocolParser类，实现帧组包/解析/CRC32/MPEG-2校验，支持APP+BOOT所有功能码</p>
+        <ul>
+            <li>新建 src/ProtocolParser.h/cpp，封装协议所有逻辑 <span style="color:var(--accent);font-size:.82em">[新增文件]</span></li>
+            <li>帧格式: [0x44][0x41][DevAddr][Rsv=0x00][Length_LE16][FC][Data][CRC32_LE32]</li>
+            <li>CRC32: 多项式0x04C11DB7, 初值0xFFFFFFFF, 计算范围Header~Data</li>
+            <li>APP功能码: 0x01握手/0x02进入Boot/0x07设备信息/0xA0射频信息/0xA3射频控制/0x1A 1444A</li>
+            <li>BOOT功能码: 0x01握手(Layer=0)/0x03升级开始/0x04固件数据/0x05升级校验/0x06升级执行/0x07设备信息</li>
+            <li>帧组装: makeFrame(DevAddr, FC, data) → QByteArray</li>
+            <li>帧解析: parseFrame(QByteArray) → Frame struct (DevAddr/FC/Data/Result)</li>
+            <li>校验Result=0x00为成功，0xFF FC为响应标志</li>
+        </ul>
+    </div>
+
+    <!-- ===== 阶段2: 功能区按钮解锁 ===== -->
+    <div class="phase">
+        <div class="ph"><div class="num">2</div><div class="pt">功能区按钮 + 解锁逻辑</div></div>
+        <p class="desc">功能区右侧增加"更新固件"按钮；握手成功后解锁功能区，初始和握手失败时禁用</p>
+        <ul>
+            <li>功能区左侧增加"更新固件"按钮 (QPushButton)，初始setEnabled(false) <span style="color:var(--accent);font-size:.82em">[UI修改]</span></li>
+            <li>握手成功(FC=0x01响应)+ProjectName含"AD1" → setEnabled(true)</li>
+            <li>updateConnectionState() 扩展：握手成功后解锁功能区按钮</li>
+            <li>握手按钮: verTopEdit有内容→用该DevAddr组帧；空→广播0xFF</li>
+        </ul>
+    </div>
+
+    <!-- ===== 阶段3: 握手协议实现 ===== -->
+    <div class="phase">
+        <div class="ph"><div class="num">3</div><div class="pt">握手协议 + 版本解析</div></div>
+        <p class="desc">握手按钮发送FC=0x01，解析响应：DevAddr填入verTopEdit，设备信息填入verBottomEdit</p>
+        <ul>
+            <li>发送: APP握手帧 FC=0x01 (DevAddr=verTopEdit内容或0xFF) <span style="color:var(--accent);font-size:.82em">[功能实现]</span></li>
+            <li>响应解析: DevAddr=响应帧[2], Data[0]=ProtoVersion</li>
+            <li>verTopEdit显示DevAddr (十六进制如0x01)，可手动编辑</li>
+            <li>verBottomEdit显示: ProjectName + ProtoVersion + AppFirmwareVer</li>
+            <li>超时5000ms无响应 → 日志报错"握手超时"</li>
+            <li>ProjectName不含"AD1" → 日志报错"设备校验失败"</li>
+        </ul>
+        <div class="warn">注: BOOT层也有FC=0x01握手，响应Data[5]=Layer(0=Boot), APP层响应Data[0]=ProtoVersion(V2=2)，根据响应格式区分</div>
+    </div>
+
+    <!-- ===== 阶段4: 固件更新流程 ===== -->
+    <div class="phase">
+        <div class="ph"><div class="num">4</div><div class="pt">固件更新流程 (IAP)</div></div>
+        <p class="desc">"更新固件"按钮: 选bin文件→BOOT升级序列(握手→开始→数据×N→校验→执行)→进度条</p>
+        <ul>
+            <li>选文件: QFileDialog打开，限制.bin后缀</li>
+            <li>更新序列: FC=0x01(Boot) → FC=0x07(获取UID算bindVerify) → FC=0x03(开始,传FwSize/FwCrc32/FwVer/BindVerify) → FC=0x04×N(每帧512B) → FC=0x05(校验) → FC=0x06(执行)</li>
+            <li>单帧数据长度固定512字节，最后一帧可能不足512</li>
+            <li>进度条: QProgressBar显示 (当前帧/总帧数×100%)</li>
+            <li>更新期间: 禁用握手栏所有控件+功能栏所有按钮+发送区</li>
+            <li>失败: QMessageBox提示错误原因(Result码映射为文字)</li>
+            <li>成功: 设备自动复位→等待设备重启→重新握手</li>
+        </ul>
+        <div class="note">bindVerify计算: 设备响应FC=0x07 Data[13~16]=DeviceUidHash(LE32)，直接作为bindVerify使用</div>
+    </div>
+
+    <!-- ===== 阶段5: 日志保存 ===== -->
+    <div class="phase">
+        <div class="ph"><div class="num">5</div><div class="pt">日志保存功能</div></div>
+        <p class="desc">日志区增加"保存"按钮，生成.md文件到项目根目录log文件夹</p>
+        <ul>
+            <li>日志区右侧增加"保存"按钮，初始setEnabled(false) <span style="color:var(--accent);font-size:.82em">[UI修改]</span></li>
+            <li>有日志内容后setEnabled(true)</li>
+            <li>保存路径: 项目根目录/log/ 文件夹(如不存在则创建)</li>
+            <li>文件名格式: YYYY-MM-DD_HH-MM-SS.md</li>
+            <li>文件内容: markdown格式，包含时间戳标题+日志时间线+设备信息</li>
+        </ul>
+    </div>
+
+    <!-- ===== UI渲染预览 ===== -->
+    <div class="phase">
+        <div class="ph"><div class="num">▸</div><div class="pt">UI 设计渲染预览</div></div>
+        <div class="ui-render">
+            <!-- 握手栏 -->
+            <div class="ui-bar">
+                <label>通信:</label><select class="ui-sel"><option>cu.usbserial-110</option></select>
+                <label>波:</label><select class="ui-sel"><option>115200</option></select>
+                <label>位:</label><select class="ui-sel"><option>8</option></select>
+                <label>停:</label><select class="ui-sel"><option>1</option></select>
+                <label>校:</label><select class="ui-sel"><option>无</option></select>
+                <button class="ui-btn">打开</button>
+                <span style="color:var(--dim);font-size:.8em">未连接</span>
+            </div>
+            <!-- 功能栏 -->
+            <div class="ui-func">
+                <div class="ui-func-left">功能模块预留区域</div>
+                <button class="ui-btn" style="padding:6px 12px">更新固件</button>
+                <div style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;display:flex;flex-direction:column;gap:2px;align-items:center">
+                    <div style="font-weight:bold;color:var(--accent);font-size:.65em;margin-bottom:2px">版本信息</div>
+                    <input class="ui-in" style="width:65px" value="" placeholder="0x01" readonly>
+                    <input class="ui-in" style="width:130px" value="" placeholder="AD01 V2.1.0" readonly>
+                </div>
+                <button class="ui-btn" style="padding:8px 12px">握手</button>
+            </div>
+            <!-- 日志 -->
+            <div class="ui-log">
+                <div><span class="time">21:30:05.123</span> <span class="tx">[TX]</span> 44 41 FF 00 05 00 01 E9 B6 25 D4 <span class="info">(广播握手)</span></div>
+                <div><span class="time">21:30:05.456</span> <span class="rx">[RX]</span> 44 41 01 00 0E 00 FE 00 01 78 56 34 12 01 01 04 CD BA <span class="info">(DevAddr=0x01 ProtoVer=2)</span></div>
+                <div><span class="time">21:30:06.001</span> <span class="info">[SYS]</span> 设备地址: 0x01 | 版本: V2.1.0 | 设备校验: OK</div>
+            </div>
+            <!-- 发送 -->
+            <div class="ui-send">
+                <input value="AT+RESET" readonly>
+                <label style="font-size:.8em"><input type="checkbox"> Hex</label>
+                <button class="ui-btn">发送</button>
+            </div>
+            <div class="ui-status">日志区 &nbsp;☐Hex &nbsp;[清空] [保存] &nbsp; <span style="color:var(--accent)">● 功能区已解锁</span></div>
+        </div>
+    </div>
+
+    <!-- ===== 改动文件 ===== -->
+    <div class="phase">
+        <div class="ph"><div class="num">▸</div><div class="pt">改动文件范围</div></div>
+        <ul>
+            <li>src/ProtocolParser.h / .cpp <span style="color:var(--accent);font-size:.82em">[新建]</span> 协议解析引擎</li>
+            <li>src/MainWindow.h / .cpp <span style="color:var(--accent);font-size:.82em">[重写]</span> 功能区增按钮、握手协议、更新流程、日志保存</li>
+            <li>CMakeLists.txt <span style="color:var(--accent);font-size:.82em">[修改]</span> 新增ProtocolParser.cpp</li>
+        </ul>
+    </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Round023 计划 — Windows 适配统一审查与调试配置修正</title>
+<style>
+  body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; max-width: 1080px; margin: 0 auto; padding: 24px 32px; color: #2a2438; line-height: 1.7; background:#faf8fc; }
+  h1 { color:#5a3a8a; border-bottom:3px solid #b8a0d8; padding-bottom:8px; }
+  h2 { color:#6a4a9a; margin-top:32px; border-left:5px solid #b8a0d8; padding-left:10px; }
+  h3 { color:#7a5aaa; margin-top:22px; }
+  code { background:#ede6f4; padding:1px 6px; border-radius:4px; font-family:"JetBrains Mono",Consolas,monospace; font-size:0.92em; }
+  pre { background:#1e1a2e; color:#e0d8f0; padding:14px 18px; border-radius:8px; overflow-x:auto; font-size:0.85em; line-height:1.5; }
+  pre .c{color:#8a82a0} pre .k{color:#e0a0ff} pre .s{color:#a0d8a0} pre .n{color:#ffb070}
+  table { border-collapse:collapse; width:100%; margin:10px 0; }
+  th,td { border:1px solid #c8b8e0; padding:7px 11px; text-align:left; vertical-align:top; }
+  th { background:#d8c8f0; color:#4a2a7a; }
+  tr:nth-child(even){ background:#f0eaf8; }
+  .ok { color:#2a8030; font-weight:bold; }
+  .warn { color:#c07020; font-weight:bold; }
+  .bad { color:#c03030; font-weight:bold; }
+  .tag { display:inline-block; padding:1px 8px; border-radius:10px; font-size:0.78em; font-weight:bold; margin-left:6px; }
+  .tag-fix { background:#d8f0d8; color:#2a8030; }
+  .tag-keep { background:#e0e0f0; color:#4040a0; }
+  .tag-mac { background:#fde8c8; color:#a06020; }
+  .tag-opt { background:#e8e8f8; color:#6060a0; }
+  .box { border:1px solid #c8b8e0; border-radius:8px; padding:10px 16px; margin:12px 0; background:#fff; }
+  .box.bad { border-color:#e0a0a0; background:#fff5f5; }
+  .box.ok { border-color:#a0d8a0; background:#f5fff5; }
+  .box.mac { border-color:#e0c090; background:#fffaf2; }
+  ul { margin:6px 0 6px 0; padding-left:22px; }
+  li { margin:3px 0; }
+  .small { color:#706080; font-size:0.88em; }
+  .hr { border:0; border-top:2px dashed #c8b8e0; margin:26px 0; }
+</style>
+</head>
+<body>
+
+<h1>Round023 计划 — Windows 适配统一审查与调试配置修正</h1>
+<p class="small">需求来源：<code>Agent/Round023/Demand.md</code> &nbsp;|&nbsp; 生成时间：2026-07-25 &nbsp;|&nbsp; 状态：<b>待确认（计划未执行）</b></p>
+
+<div class="box">
+<b>需求摘要</b>
+<ul>
+<li>① macOS 端 USB 枚举/通信/固件更新均正常（前置已成功）。</li>
+<li>② 考虑 Windows 适配性，Win 上应已修正过，统一审查并修正调试配置。</li>
+<li>③ 不影响 Mac 端功能。</li>
+</ul>
+<b>规则遵循</b>：中文为主 / 文件路径优于文件名 / 删除入 TrashCan / 全程权限已授、计划待确认后再执行 / 完成后生成 Report.html。
+</div>
+
+<h2>一、统一审查结论（源码 vs 构建配置）</h2>
+
+<p>审查范围：<code>src/</code> 全量、<code>CMakeLists.txt</code>、<code>build_win.bat</code>、<code>issue/pack.bat</code>、<code>issue/pack.sh</code>、<code>.vscode/</code>、<code>main.cpp</code>。</p>
+
+<h3>1. 源码层 — 已完成平台抽象 <span class="tag tag-keep">保持不动</span></h3>
+<table>
+<tr><th>文件</th><th>审查结论</th></tr>
+<tr><td><code>src/HidManager.h</code></td><td>平台门面：macOS→<code>HidManagerMac</code>，Windows→<code>HidManagerWin</code>，<code>using HidManager = ...</code>。MainWindow 不感知平台。<span class="ok">OK</span></td></tr>
+<tr><td><code>src/HidManagerWin.cpp/.h</code></td><td>原生 Win32 HID 实现：SetupAPI 枚举 + <code>CreateFile(overlapped)</code> + 读线程 <code>ReadFile</code> + <code>WriteFile</code>，<code>HidP_GetCaps</code> 动态报文长度，Report ID=0 的 65B 缓冲处理正确，与 Mac 端 0x02 前缀语义一致。<span class="ok">OK</span></td></tr>
+<tr><td><code>src/HidManagerMac.cpp/.h</code></td><td>纯 IOHIDManager，macOS 专用。<span class="ok">OK</span></td></tr>
+<tr><td><code>src/MainWindow.cpp/.h</code></td><td>已守护 <code>#ifdef Q_OS_MACOS #include &lt;unistd.h&gt;</code>；<code>/tmp/</code> 已改 <code>QDir::tempPath()</code>（Win==%TEMP%）；USB 枚举/打开/握手/升级全走 <code>m_transport</code> 抽象。<span class="ok">OK</span></td></tr>
+<tr><td><code>src/SerialPortManager.cpp</code></td><td>QSerialPort 跨平台，COM 在 UI 暂未启用（对 Win 同样不影响）。<span class="ok">OK</span></td></tr>
+<tr><td><code>src/ProtocolParser.cpp/.h</code></td><td>纯协议层，无平台依赖。<span class="ok">OK</span></td></tr>
+<tr><td><code>CMakeLists.txt</code></td><td>Win 分支按平台选 <code>HidManagerWin</code>、链接 <code>setupapi</code>+<code>hid</code>、Qt 路径自动探测 arm64/x64/mingw。<span class="ok">OK</span>（仅可选微调，见下）</td></tr>
+</table>
+<div class="box ok"><b>结论</b>：源码层 Windows 适配<b>已完成</b>，无需改动 C++ 源文件。本轮重点在<b>构建/打包/调试脚本</b>与<b>工程名一致性</b>。</div>
+
+<h3>2. 构建与调试配置 — 存在问题（本轮修正对象）</h3>
+
+<div class="box bad">
+<b>问题 A：<code>build_win.bat</code> 严重过期，与现架构矛盾</b>
+<ul>
+<li>注释仍写 "USB HID 依赖(libusb-1.0)" "走 libusb 中断端点直连" "vcpkg install libusb" —— 实际已改<b>原生 Win32 HID</b>，<b>零外部依赖</b>（<code>setupapi.lib</code>/<code>hid.lib</code> 系统自带）。误导后续维护。</li>
+<li><code>windeployqt</code> 目标写成 <code>ComforTool.exe</code>（第49行），但 CMake 目标名是 <code>SwComForTool</code>，产物为 <code>SwComForTool.exe</code> → windeployqt 找不到文件而失败。</li>
+<li>提示文案自相矛盾：第43行说 <code>build\Release\SwComForTool.exe</code>，第49行又对 <code>ComforTool.exe</code> 部署。</li>
+<li><code>QT_PATH</code> 硬编码 arm64，无 x64 fallback（与 CMakeLists 的多路径探测不一致）。</li>
+<li>切换 Qt 路径时未清 <code>CMakeCache.txt</code>，旧 <code>CMAKE_PREFIX_PATH</code> 残留会导致重配失败。</li>
+</ul>
+</div>
+
+<div class="box bad">
+<b>问题 B：<code>issue/pack.bat</code>（Windows 打包）完全失效</b>
+<ul>
+<li><code>findstr /c:"project(ComforTool VERSION"</code> 匹配不到 —— CMakeLists 实际是 <code>project(SwComForTool VERSION 1.0.0</code>，<b>版本号取空</b>，包名错。</li>
+<li>引用 <code>deploy\ComforTool.exe</code> —— 实际产物 <code>SwComForTool.exe</code>，存在性检查必失败退出。</li>
+<li>包名 <code>ComforTool%VERSION%_WinARM64</code> 与实际工程名不符。</li>
+<li><code>Qt6SerialPort.dll</code> 复制路径与 windeployqt 流程重复/可能冲突。</li>
+</ul>
+</div>
+
+<div class="box mac">
+<b>问题 C：<code>issue/pack.sh</code>（macOS 打包）同名问题 <span class="tag tag-mac">涉及 Mac·仅构建配置</span></b>
+<ul>
+<li>同样 <code>project(ComforTool VERSION</code> 匹配不到 → 版本空；<code>ComforTool.app</code> 实际为 <code>SwComForTool.app</code>；包名 <code>ComforTool_macOS</code>。</li>
+<li><b>影响判断</b>：仅修改<b>打包脚本的命名/匹配字符串</b>，<b>不触碰任何 macOS 运行逻辑、源码、签名、bundle 配置</b>，因此<b>不影响 Mac 端功能</b>；只是让 macOS 打包脚本真正可用（当前它本就是坏的）。</li>
+</ul>
+</div>
+
+<div class="box bad">
+<b>问题 D：<code>.vscode/</code> 缺 Windows 调试配置</b>
+<ul>
+<li><code>launch.json</code> 5 个条目全是 macOS（<code>SwComForTool.app/Contents/MacOS/...</code> + lldb + DYLD_*），当前工作目录在 Windows 下无可调试条目。</li>
+<li><code>tasks.json</code> 仅有 macOS 构建/启动任务。</li>
+<li>需<b>追加</b> Windows 调试与构建条目，<b>不改动</b>现有 Mac 条目（Mac 端零影响）。</li>
+</ul>
+</div>
+
+<div class="box">
+<b>问题 E（可选微调）：<code>main.cpp</code> 与 <code>CMakeLists.txt</code></b>
+<ul>
+<li><code>main.cpp</code> 的 <code>QCoreApplication::setSetuidAllowed(true)</code> 是 macOS setuid Qt 安全检查绕过专用，Windows 上无意义。用 <code>#ifdef Q_OS_MACOS</code> 守护（Mac 行为不变）。</li>
+<li><code>CMakeLists.txt</code> Windows 端可补 <code>RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Release</code>，让 <code>SwComForTool.exe</code> 直接落在 <code>build/Release/</code>（windeployqt 与 pack.bat 期望路径），避免多配置生成器下产物进 <code>build/Release/</code> 或 <code>build/</code> 不一致。</li>
+</ul>
+</div>
+
+<h2>二、执行计划（逐文件）</h2>
+
+<table>
+<tr><th>#</th><th>文件</th><th>动作</th><th>要点</th><th>影响 Mac</th></tr>
+
+<tr><td>1</td><td><code>build_win.bat</code></td>
+<td>重写 <span class="tag tag-fix">修正</span></td>
+<td>删除 libusb/vcpkg 误导注释；<code>QT_PATH</code> 自动探测 arm64→x64→mingw（与 CMake 一致）；配置前删 <code>build/CMakeCache.txt</code>；显式 <code>-DCOMFORTOOL_ENABLE_USB=ON</code>；<code>windeployqt SwComForTool.exe</code>；提示文案统一 <code>SwComForTool.exe</code>。</td>
+<td><span class="ok">否</span></td></tr>
+
+<tr><td>2</td><td><code>issue/pack.bat</code></td>
+<td>重写 <span class="tag tag-fix">修正</span></td>
+<td><code>findstr</code> 改 <code>project(SwComForTool VERSION</code>；产物/包名改 <code>SwComForTool</code>；<code>deploy\SwComForTool.exe</code>；QT_PATH 探测；包名按架构 <code>SwComForToolV*._WinARM64</code>/<code>_Win_x64</code>；windeployqt 步骤对齐。</td>
+<td><span class="ok">否</span></td></tr>
+
+<tr><td>3</td><td><code>issue/pack.sh</code></td>
+<td>修正 <span class="tag tag-mac">Mac·仅命名</span></td>
+<td><code>project(SwComForTool VERSION</code>；<code>SwComForTool.app</code>；<code>PKGNAME=SwComForTool${VERSION}_macOS</code>。<b>不改任何运行/签名/bundle 逻辑</b>。</td>
+<td><span class="warn">仅打包脚本，不影响运行</span></td></tr>
+
+<tr><td>4</td><td><code>.vscode/launch.json</code></td>
+<td>追加条目 <span class="tag tag-fix">修正</span></td>
+<td>新增 1~2 个 Windows 调试条目：<code>program=build/Release/SwComForTool.exe</code>，<code>MIMode=gdb</code>（或 cppdbg+lldb），<code>cwd=${workspaceFolder}</code>。现有 5 个 Mac 条目<b>原样保留</b>。</td>
+<td><span class="ok">否</span></td></tr>
+
+<tr><td>5</td><td><code>.vscode/tasks.json</code></td>
+<td>追加条目 <span class="tag tag-fix">修正</span></td>
+<td>新增 Windows 构建任务：<code>cmake -S . -B build -DCMAKE_PREFIX_PATH=...</code> + <code>cmake --build build --config Release</code>。现有 Mac 任务<b>原样保留</b>。</td>
+<td><span class="ok">否</span></td></tr>
+
+<tr><td>6</td><td><code>src/main.cpp</code></td>
+<td>平台守护 <span class="tag tag-fix">修正</span></td>
+<td><code>setSetuidAllowed(true)</code> 包进 <code>#ifdef Q_OS_MACOS</code>。macOS 调用不变，Windows 不再调用。</td>
+<td><span class="ok">否（Mac 行为不变）</span></td></tr>
+
+<tr><td>7</td><td><code>CMakeLists.txt</code></td>
+<td>可选微调 <span class="tag tag-opt">可选</span></td>
+<td>Windows 分支补 <code>set_target_properties(SwComForTool PROPERTIES RUNTIME_OUTPUT_DIRECTORY .../Release)</code>，统一产物路径。<b>默认执行</b>，若你不愿动 CMake 可在确认时备注跳过。</td>
+<td><span class="ok">否</span></td></tr>
+</table>
+
+<h3>不动清单（审查确认无 Win 阻塞问题）</h3>
+<div class="box ok">
+<code>src/HidManagerWin.cpp/.h</code>、<code>src/HidManagerMac.cpp/.h</code>、<code>src/HidManager.h</code>、<code>src/ITransport.h</code>、<code>src/HidDeviceInfo.h</code>、<code>src/MainWindow.cpp/.h</code>、<code>src/SerialPortManager.cpp/.h</code>、<code>src/ProtocolParser.cpp/.h</code> —— <b>源码零改动</b>。
+</div>
+
+<h2>三、验证方式</h2>
+<div class="box">
+<ul>
+<li>当前 Windows 环境<b>无法实编译</b>（无确认的 Qt6/MSVC/CMake 工具链），故采用<b>静态校验</b>：</li>
+<li>① <code>build_win.bat</code> / <code>pack.bat</code>：审查 <code>findstr</code> 匹配串与 CMakeLists 一致性、目标文件名一致、QT_PATH 探测分支正确。</li>
+<li>② <code>pack.sh</code>：<code>grep</code> 验证 <code>project(SwComForTool VERSION</code> 在 CMakeLists 可命中。</li>
+<li>③ <code>.vscode/*.json</code>：JSON 合法性 + Mac 条目数量未减少。</li>
+<li>④ <code>main.cpp</code> 守护宏正确。</li>
+<li>⑤ 全部改动<b>不引入</b>对 Mac 源码/签名/bundle/运行路径的任何变更。</li>
+</ul>
+</div>
+
+<h2>四、TrashCan / 备份</h2>
+<ul>
+<li>本轮<b>无文件删除</b>（仅修改脚本/配置），TrashCan 不新增。</li>
+<li>按工程规则，执行前会调用 <code>backup.sh</code> 做变更前快照（若脚本可执行）。</li>
+</ul>
+
+<h2>五、风险与回滚</h2>
+<ul>
+<li><b>Mac 影响</b>：唯一触及 Mac 的是 <code>issue/pack.sh</code> 的命名字符串，<b>不触碰</b>运行/签名/源码；如不放心可在确认时要求<b>跳过 pack.sh</b>。</li>
+<li><b>回滚</b>：所有改动前有 <code>backup.sh</code> 快照；脚本/配置均为纯文本，可逐文件还原。</li>
+<li><b>不可验证项</b>：Win 实编译/实跑因缺工具链无法在本会话完成，需你在 Win 机器上跑 <code>build_win.bat</code> 验证；Report 会如实记录此限制。</li>
+</ul>
+
+<hr class="hr">
+<h2>六、待你确认</h2>
+<div class="box bad">
+<b>请回复确认或调整后再执行</b>
+<ul>
+<li>① 是否<b>同意全量执行</b>（1~7）？</li>
+<li>② <code>issue/pack.sh</code>（Mac 打包脚本命名）是否一并修正？建议<b>修正</b>（当前是坏的，且不影响运行）；如否请备注"跳过 pack.sh"。</li>
+<li>③ <code>CMakeLists.txt</code> 的 <code>RUNTIME_OUTPUT_DIRECTORY</code> 微调是否执行？默认<b>执行</b>；如否备注"跳过 CMake 微调"。</li>
+</ul>
+<p class="small">确认后我将执行，完成后生成 <code>Agent/Round023/Report.html</code>。</p>
+</div>
+
+</body>
+</html>

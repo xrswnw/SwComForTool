@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ComforTool - Round002 执行报告</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card-bg: #1e293b;
+            --border: #334155;
+            --highlight: #ef4444;
+            --text: #f1f5f9;
+            --text-dim: #94a3b8;
+            --green: #22c55e;
+            --blue: #3b82f6;
+            --yellow: #eab308;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; background: var(--bg); color: var(--text); line-height: 1.8; padding: 40px 20px; }
+        .container { max-width: 960px; margin: 0 auto; }
+        h1 { text-align: center; font-size: 2em; margin-bottom: 6px; color: var(--green); }
+        .subtitle { text-align: center; color: var(--text-dim); margin-bottom: 36px; }
+        .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 24px 28px; margin-bottom: 20px; }
+        .card-title { font-size: 1.2em; font-weight: 600; margin-bottom: 14px; }
+        .badge { display: inline-block; font-size: 0.72em; padding: 2px 10px; border-radius: 99px; font-weight: 600; }
+        .badge-ok { background: rgba(34,197,94,0.15); color: var(--green); }
+        .badge-warn { background: rgba(234,179,8,0.15); color: var(--yellow); }
+        table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 0.9em; }
+        th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+        th { color: var(--text-dim); font-weight: 500; }
+        .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 10px 0; }
+        .status-item { background: rgba(0,0,0,0.15); border-radius: 8px; padding: 12px 16px; }
+        .status-item .label { color: var(--text-dim); font-size: 0.82em; }
+        .status-item .value { font-size: 1.1em; font-weight: 600; margin-top: 2px; }
+        .preview { background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 8px; padding: 14px; font-family: "SF Mono", monospace; font-size: 0.72em; line-height: 1.5; color: var(--text-dim); white-space: pre; overflow-x: auto; margin-top: 10px; }
+        .warn-box { background: rgba(234,179,8,0.08); border-left: 3px solid var(--yellow); padding: 10px 14px; border-radius: 0 8px 8px 0; margin-top: 12px; font-size: 0.9em; color: var(--yellow); }
+        @media (max-width: 640px) { .status-grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <h1>ComforTool - Round002 执行报告</h1>
+    <p class="subtitle">界面重构 · 握手栏+功能栏+日志栏 · Win10兼容 · 2026-05-28</p>
+
+    <!-- 总体概况 -->
+    <div class="card">
+        <div class="card-title">总体概况</div>
+        <div class="status-grid">
+            <div class="status-item">
+                <div class="label">编译状态</div>
+                <div class="value" style="color:var(--green)">零错误零警告</div>
+            </div>
+            <div class="status-item">
+                <div class="label">窗口尺寸</div>
+                <div class="value">1280 × 960（可调）</div>
+            </div>
+            <div class="status-item">
+                <div class="label">布局结构</div>
+                <div class="value">握手栏 → 功能栏(预留) → 日志栏</div>
+            </div>
+            <div class="status-item">
+                <div class="label">跨平台</div>
+                <div class="value" style="color:var(--green)">macOS + Win10 兼容</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 各阶段结果 -->
+    <div class="card">
+        <div class="card-title">各阶段执行结果</div>
+        <table>
+            <thead><tr><th>阶段</th><th>内容</th><th>状态</th></tr></thead>
+            <tbody>
+                <tr><td>1</td><td>MainWindow 重构为三层布局</td><td><span class="badge badge-ok">完成</span></td></tr>
+                <tr><td>2</td><td>串口过滤为COM口 + 握手按钮</td><td><span class="badge badge-ok">完成</span></td></tr>
+                <tr><td>3</td><td>CMake 跨平台兼容 + Win10 构建方案</td><td><span class="badge badge-ok">完成</span></td></tr>
+                <tr><td>4</td><td>编译验证</td><td><span class="badge badge-ok">完成</span></td></tr>
+                <tr><td>5</td><td>备份同步 + 变更日志 + 报告</td><td><span class="badge badge-ok">完成</span></td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 详细变更 -->
+    <div class="card">
+        <div class="card-title">详细变更记录</div>
+        <table>
+            <thead><tr><th>文件</th><th>变更类型</th><th>说明</th></tr></thead>
+            <tbody>
+                <tr><td>src/MainWindow.h</td><td>重写</td><td>移除旧成员(toggleBtn/refreshBtn)，新增 handshakeBtn/statusLabel，简化成员变量</td></tr>
+                <tr><td>src/MainWindow.cpp</td><td>重写</td><td>三层布局：握手栏(Com口+参数+握手按钮) + 功能栏(QGroupBox预留) + 日志栏(QSplitter分接收/发送区)；refreshPorts()按平台过滤COM口；onHandshake()替代togglePort()</td></tr>
+                <tr><td>CMakeLists.txt</td><td>修改</td><td>CMAKE_PREFIX_PATH 按平台条件判断(Apple/Win32)；WIN32_EXECUTABLE TRUE</td></tr>
+                <tr><td>build_win.bat</td><td>新建</td><td>Win10 一键构建脚本：自动查找Qt路径→cmake配置→编译→windeployqt部署</td></tr>
+                <tr><td>docs/BUILD_WIN10.md</td><td>新建</td><td>Win10 构建详细指南：前置条件、两种构建方式(MSVC/MinGW)、windeployqt说明</td></tr>
+                <tr><td>src/SerialPortManager.*</td><td>不变</td><td>—</td></tr>
+                <tr><td>src/main.cpp</td><td>不变</td><td>—</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 界面布局 -->
+    <div class="card">
+        <div class="card-title">当前界面布局</div>
+        <div class="preview">┌─────────────────────────────────────────────────────────────────────────────────────┐
+│ <span style="color:#22c55e;font-weight:600">ComforTool</span>                                                                            │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│ <span style="color:#ef4444;font-weight:600">【握手栏】</span>  <span style="color:#3b82f6">[通信接口: COM▼]</span>  <span style="color:#3b82f6">[刷新]</span>  <span style="color:#3b82f6">[波特率:115200▼]</span>  <span style="color:#3b82f6">[数据位:8▼]</span>  <span style="color:#3b82f6">[停止位:1▼]</span>  <span style="color:#3b82f6">[校验:无▼]</span>  <span style="color:#3b82f6">[握 手]</span>  状态│
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│ <span style="color:#eab308;font-weight:600">【功能栏】</span>  <span style="color:#666">功能模块预留区域，后续版本在此展开</span>                                                        │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│ <span style="color:#22c55e;font-weight:600">接收区</span>      ☐Hex显示  [清空]                                                                │
+│ ┌─────────────────────────────────────────────────────────────────────────────────┐ │
+│ │  (串口接收数据实时显示区)                                                        │ │
+│ └─────────────────────────────────────────────────────────────────────────────────┘ │
+│ <span style="color:#22c55e;font-weight:600">发送区</span>      ☐Hex发送  [发送]                                                                │
+│ ┌─────────────────────────────────────────────────────────────────────────────────┐ │
+│ │  (串口发送数据输入区)                                                            │ │
+│ └─────────────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────────┘</div>
+    </div>
+
+    <!-- Win10 兼容方案 -->
+    <div class="card">
+        <div class="card-title">Win10 兼容方案</div>
+        <table>
+            <thead><tr><th>项目</th><th>方案</th></tr></thead>
+            <tbody>
+                <tr><td>CMake 配置</td><td>自动按平台检测 Qt 路径：macOS→项目内Qt目录，Win32→C:/Qt/6.8.3/msvc2022_64</td></tr>
+                <tr><td>串口枚举</td><td>#ifdef Q_OS_WIN 显示 COM* 口；#else 显示 usbserial/usbmodem</td></tr>
+                <tr><td>构建方式</td><td>MSVC2022_64 + Visual Studio 生成器 或 MinGW + MinGW Makefiles</td></tr>
+                <tr><td>部署</td><td>windeployqt.exe 自动复制 Qt DLL 依赖</td></tr>
+                <tr><td>窗口样式</td><td>WIN32_EXECUTABLE TRUE，不弹控制台窗口</td></tr>
+            </tbody>
+        </table>
+        <div class="warn-box">Win10 实际编译需在 Windows 环境下进行。当前仅确保代码和脚本兼容，未在 Win10 上实际验证。</div>
+    </div>
+
+    <!-- 文件结构 -->
+    <div class="card">
+        <div class="card-title">新增/变更文件</div>
+        <table>
+            <thead><tr><th>文件</th><th>状态</th></tr></thead>
+            <tbody>
+                <tr><td>build_win.bat</td><td>新建 - Win10构建脚本</td></tr>
+                <tr><td>docs/BUILD_WIN10.md</td><td>新建 - Win10构建指南</td></tr>
+                <tr><td>src/MainWindow.h</td><td>修改 - 三层布局成员</td></tr>
+                <tr><td>src/MainWindow.cpp</td><td>重写 - 完整界面重构</td></tr>
+                <tr><td>CMakeLists.txt</td><td>修改 - 跨平台兼容</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+</div>
+</body>
+</html>

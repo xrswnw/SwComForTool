@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AD01 Round099 计划 v3.0</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif; background: #f0eaf8; color: #303030; line-height: 1.8; padding: 24px; }
+  .container { max-width: 1100px; margin: 0 auto; }
+  h1 { text-align: center; font-size: 2em; color: #503070; margin-bottom: 8px; }
+  .sub { text-align: center; color: #8870a8; font-size: 0.95em; margin-bottom: 32px; }
+  h2 { color: #7830b0; font-size: 1.45em; margin: 36px 0 14px; border-bottom: 2px solid #d0c0e8; padding-bottom: 6px; }
+  h3 { color: #503070; font-size: 1.15em; margin: 22px 0 10px; }
+  h4 { color: #6840a0; font-size: 1.05em; margin: 16px 0 8px; }
+  p, li { font-size: 0.96em; }
+  p { margin: 8px 0; }
+  ul, ol { margin: 8px 0 8px 24px; }
+  li { margin: 4px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 0.93em; }
+  th, td { border: 1px solid #c8b8e0; padding: 7px 11px; text-align: left; }
+  th { background: #e0d4f0; color: #503070; font-weight: 600; }
+  tr:nth-child(even) { background: #f8f4ff; }
+  .card { background: #fff; border: 1px solid #d8d0e8; border-radius: 10px; padding: 22px 28px; margin: 18px 0; box-shadow: 0 2px 8px rgba(80,48,112,0.06); }
+  .warn { background: #fff8f0; border: 1px solid #e8c8a0; border-left: 4px solid #d08020; border-radius: 8px; padding: 14px 18px; margin: 14px 0; }
+  .ok { background: #f0faf0; border: 1px solid #a0d8a0; border-left: 4px solid #50a050; border-radius: 8px; padding: 14px 18px; margin: 14px 0; }
+  .info { background: #f4f0fa; border: 1px solid #c8b8e0; border-left: 4px solid #7830b0; border-radius: 8px; padding: 14px 18px; margin: 14px 0; }
+  .err { background: #fff0f0; border: 1px solid #e0a0a0; border-left: 4px solid #c03030; border-radius: 8px; padding: 14px 18px; margin: 14px 0; }
+  .tag { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.82em; font-weight: 600; margin-right: 6px; }
+  .tag-boot { background: #e0d4f0; color: #503070; }
+  .tag-flash { background: #ffe8d0; color: #a06020; }
+  .tag-sec { background: #ffd0d0; color: #c03030; }
+  .tag-verify { background: #d0f0d0; color: #308030; }
+  .tag-vet6 { background: #d0e8f8; color: #2060a0; }
+  .tag-c8t6 { background: #f0e0c0; color: #a07020; }
+  code, .code { font-family: "Menlo", "Consolas", monospace; background: #f4f0fa; padding: 1px 5px; border-radius: 3px; font-size: 0.9em; color: #503070; }
+  pre { background: #2a1a3a; color: #d8c8e8; padding: 16px; border-radius: 8px; overflow-x: auto; font-family: "Menlo", "Consolas", monospace; font-size: 0.88em; line-height: 1.6; margin: 12px 0; }
+  .flow { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px; margin: 18px 0; }
+  .flow-box { background: #e0d4f0; color: #503070; border: 1px solid #c8b8e0; border-radius: 8px; padding: 8px 16px; font-size: 0.9em; font-weight: 600; text-align: center; min-width: 90px; }
+  .flow-boxBoot { background: #ffe8d0; color: #a06020; border-color: #e8c8a0; }
+  .flow-boxApp { background: #d0f0d0; color: #308030; border-color: #a0d8a0; }
+  .flow-boxErr { background: #ffd0d0; color: #c03030; border-color: #e8a0a0; }
+  .flow-arrow { font-size: 1.2em; color: #8870a8; }
+  .change { background: #fff8e0; border-left: 4px solid #d0a020; border-radius: 8px; padding: 14px 18px; margin: 14px 0; }
+  .ver { color: #a080c0; font-size: 0.82em; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Round099: BOOT + APP 固件更新流程设计</h1>
+<p class="sub">AD01 — 嵌入式固件升级方案 &nbsp;|&nbsp; 版本: v3.0 &nbsp;|&nbsp; 2026-05-30</p>
+
+<!-- ============================================================ -->
+<h2>1. 版本变更记录</h2>
+
+<div class="card">
+<table>
+  <tr><th>版本</th><th>日期</th><th>变更</th></tr>
+  <tr><td>v1.0</td><td>2026-05-30</td><td>初始版本，三种方案对比</td></tr>
+  <tr><td>v2.0</td><td>2026-05-30</td><td>追加：参数区移至BOOT尾部，可行性验证</td></tr>
+  <tr><td>v3.0</td><td>2026-05-30</td><td>追加：参数缩减512B(含影子)、移除冗余字段、仅方案B细化、BOOT区24KB跨项目固定、版本信息字符串宏定义</td></tr>
+</table>
+</div>
+
+<div class="change">
+<p><strong>v2.0→v3.0 核心变更：</strong></p>
+<ol>
+  <li>参数区从2048字节缩减为512字节（主区256B + 影子区256B）</li>
+  <li>移除字段：commMethod、appFirmwareVer、projectName</li>
+  <li>baudRateIdx → baudRate（原始波特率值）</li>
+  <li>仅保留方案B，移除方案A/C，针对B细化设计</li>
+  <li>BOOT区24KB固定不变，跨项目统一，仅APP区随项目变更</li>
+  <li>版本信息：config.h宏定义字符串，HW=16B / SW=16B / BOOT=16B，不全补零</li>
+</ol>
+</div>
+
+<!-- ============================================================ -->
+<h2>2. 核心设计原则</h2>
+
+<div class="card" style="background: linear-gradient(135deg, #f0eaf8 0%, #e8e0f4 100%);">
+<ol>
+  <li><strong>BOOT是安全底线</strong> — 永不在线修改，24KB跨项目固定</li>
+  <li><strong>参数在BOOT尾部</strong> — 升级APP不擦除参数，双区可访问</li>
+  <li><strong>APP是可替换单元</strong> — 单APP区+升级标志，升级失败留BOOT可重升级</li>
+  <li><strong>版本信息字符串宏</strong> — config.h定义，上电自动同步到参数区</li>
+  <li><strong>512字节参数</strong> — 主区256B含核心数据，影子区256B防掉电，用户区含在主区内</li>
+</ol>
+</div>
+
+<!-- ============================================================ -->
+<h2>3. FLASH分区布局</h2>
+
+<div class="card">
+<h3>3.1 VET6 (512KB)</h3>
+<pre>
+地址范围                           大小        说明
+─────────────────────────────────────────────────────────
+0x08000000 ~ 0x080057FF   22KB     BOOT代码区（跨项目固定）
+0x08005800 ~ 0x08005FFF    2KB     参数区（BOOT尾部，升级不擦除）
+                                    ↓ 实际使用512B，剩余1.5KB保留
+0x08006000 ~ 0x0807FFFF  488KB    APP区（可在线升级，随项目变更）
+─────────────────────────────────────────────────────────
+BOOT区总概念 = 0x08000000 ~ 0x08005FFF = 24KB（固定不变）
+APP区起始 = 0x08006000（固定不变）
+</pre>
+
+<h3>3.2 C8T6 (64KB)</h3>
+<pre>
+地址范围                           大小        说明
+─────────────────────────────────────────────────────────
+0x08000000 ~ 0x080057FF   22KB     BOOT代码区
+0x08005800 ~ 0x08005FFF    2KB     参数区
+0x08006000 ~ 0x0800FFFF   40KB     APP区
+─────────────────────────────────────────────────────────
+</pre>
+
+<div class="ok">
+<strong>跨项目统一：</strong>BOOT区大小24KB + APP起始0x08006000 始终不变。不同项目仅改变APP大小和内容。参数区位置0x08005800不变。
+</div>
+</div>
+
+<!-- ============================================================ -->
+<h2>4. 参数区设计（512字节）</h2>
+
+<div class="card">
+<h3>4.1 参数区布局</h3>
+<pre>
+参数区总大小 = 512字节 (位于BOOT尾部0x08005800)
+─────────────────────────────────────────────────
+主区 (256字节, 偏移 0x00~0xFF):
+┌──────────┬──────────┬───────────────────────────────────────┐
+│ 偏移      │ 大小      │ 内容                                  │
+├──────────┼──────────┼───────────────────────────────────────┤
+│ 0x00     │ 4B       │ 魔数 0xAD01AD01                       │
+│ 0x04     │ 1B       │ version (PARAM_VERSION=1)             │
+│ 0x05     │ 1B       │ deviceStatus (IDLE/RUN/UPG/FAULT)    │
+│ 0x06     │ 1B       │ deviceAddr (设备地址)                  │
+│ 0x07     │ 1B       │ 预留                                  │
+│ 0x08     │ 4B       │ baudRate (波符率原始值, 如9600)        │
+│ 0x0C     │ 4B       │ appCrc32 (APP固件CRC32)               │
+│ 0x10     │ 4B       │ appSize (APP固件大小)                  │
+│ 0x14     │ 4B       │ upgradeCount (升级次数)               │
+│ 0x18     │ 4B       │ deviceUidHash (设备UID CRC32)         │
+│ 0x1C     │ 4B       │ bindVerify (绑定校验值)               │
+│ 0x20     │ 4B       │ mainCrc32 (主区CRC32, 覆盖0x00~0xFB) │
+│ 0x24     │ 16B      │ hwVersion (硬件版本字符串，补零)       │
+│ 0x34     │ 16B      │ swVersion (软件版本字符串，补零)       │
+│ 0x44     │ 16B      │ bootVersion (BOOT版本字符串，补零)     │
+│ 0x54     │ 172B     │ 用户参数区 (自由使用)                  │
+└──────────┴──────────┴───────────────────────────────────────┘
+
+影子区 (256字节, 偏移 0x100~0x1FF):
+┌──────────┬──────────┬───────────────────────────────────────┐
+│ 偏移      │ 大小      │ 内容                                  │
+├──────────┼──────────┼───────────────────────────────────────┤
+│ 0x100    │ 4B       │ 影子魔数 0xAD01AD01                   │
+│ 0x104    │ 1B       │ 影子version                            │
+│ 0x105    │ 1B       │ 影子deviceStatus                      │
+│ 0x106    │ 1B       │ 影子deviceAddr                        │
+│ 0x107    │ 1B       │ 预留                                  │
+│ 0x108    │ 4B       │ 影子baudRate                           │
+│ 0x10C    │ 4B       │ 影子appCrc32                          │
+│ 0x110    │ 4B       │ 影子appSize                            │
+│ 0x114    │ 4B       │ 影子upgradeCount                      │
+│ 0x118    │ 4B       │ 影子deviceUidHash                     │
+│ 0x11C    │ 4B       │ 影子bindVerify                        │
+│ 0x120    │ 4B       │ shadowCrc32 (影子区CRC, 覆盖0x100~0x11F)│
+│ 0x124    │ 16B      │ 影子hwVersion                         │
+│ 0x134    │ 16B      │ 影子swVersion                         │
+│ 0x144    │ 16B      │ 影子bootVersion                       │
+│ 0x154    │ 172B     │ 预留(影子不含用户参数,减少写入量)      │
+└──────────┴──────────┴───────────────────────────────────────┘
+</pre>
+
+<h3>4.2 字段变更对照</h3>
+<table>
+  <tr><th>字段</th><th>v2.0</th><th>v3.0</th><th>说明</th></tr>
+  <tr><td>commMethod</td><td>有(1B)</td><td style="color:#c03030;">移除</td><td>固定UART，无需存储</td></tr>
+  <tr><td>appFirmwareVer</td><td>有(4B)</td><td style="color:#c03030;">移除</td><td>版本信息改为字符串在config.h</td></tr>
+  <tr><td>projectName</td><td>有(20B)</td><td style="color:#c03030;">移除</td><td>项目名在config.h宏定义</td></tr>
+  <tr><td>baudRateIdx</td><td>索引(1B)</td><td style="color:#308030;">baudRate(4B)</td><td>直接存波特率原始值</td></tr>
+  <tr><td>hwVersion</td><td>2B编码</td><td style="color:#308030;">16B字符串</td><td>config.h宏定义，如"VET6-A01    "</td></tr>
+  <tr><td>swVersion</td><td>2B编码</td><td style="color:#308030;">16B字符串</td><td>config.h宏定义，如"V1.3        "</td></tr>
+  <tr><td>bootVersion</td><td>2B编码</td><td style="color:#308030;">16B字符串</td><td>config.h宏定义，如"V1.0        "</td></tr>
+  <tr><td>verifyLevel</td><td>4B</td><td style="color:#c03030;">移除</td><td>校验级别由协议帧传递，无需持久化</td></tr>
+  <tr><td>参数总大小</td><td>2048B</td><td style="color:#308030;">512B</td><td>主区256B+影子区256B</td></tr>
+  <tr><td>用户参数区</td><td>1928B</td><td style="color:#308030;">172B</td><td>主区内的0x54~0xFF</td></tr>
+</table>
+
+<h3>4.3 DeviceParam_t 结构体定义</h3>
+<pre>
+// Common/Update/Param.h
+#define PARAM_FLASH_SIZE   512U
+#define PARAM_MAGIC        0xAD01AD01U
+#define PARAM_VERSION      1
+
+#define VER_STR_LEN        16U   // 版本字符串长度(含补零)
+
+#define PARAM_STATUS_IDLE    0
+#define PARAM_STATUS_RUN     1
+#define PARAM_STATUS_UPG     2
+#define PARAM_STATUS_FAULT   3
+
+typedef struct {
+    /* ---- 主区 (256B) ---- */
+    uint32_t magic;            // 0x00: 魔数 0xAD01AD01
+    uint8_t  version;          // 0x04: 参数版本
+    uint8_t  deviceStatus;     // 0x05: 设备状态
+    uint8_t  deviceAddr;       // 0x06: 设备地址
+    uint8_t  reserved1;        // 0x07: 预留
+    uint32_t baudRate;         // 0x08: 波特率(原始值)
+    uint32_t appCrc32;         // 0x0C: APP CRC32
+    uint32_t appSize;          // 0x10: APP大小
+    uint32_t upgradeCount;     // 0x14: 升级次数
+    uint32_t deviceUidHash;    // 0x18: 设备UID哈希
+    uint32_t bindVerify;       // 0x1C: 绑定校验值
+    uint32_t mainCrc32;        // 0x20: 主区CRC32(覆盖0x00~0xFB)
+    char     hwVersion[VER_STR_LEN];   // 0x24: 硬件版本
+    char     swVersion[VER_STR_LEN];   // 0x34: 软件版本
+    char     bootVersion[VER_STR_LEN]; // 0x44: BOOT版本
+    uint8_t  userParam[172];   // 0x54: 用户参数区
+
+    /* ---- 影子区 (256B) ---- */
+    uint32_t shadowMagic;
+    uint8_t  shadowVersion;
+    uint8_t  shadowDeviceStatus;
+    uint8_t  shadowDeviceAddr;
+    uint8_t  shadowReserved1;
+    uint32_t shadowBaudRate;
+    uint32_t shadowAppCrc32;
+    uint32_t shadowAppSize;
+    uint32_t shadowUpgradeCount;
+    uint32_t shadowDeviceUidHash;
+    uint32_t shadowBindVerify;
+    uint32_t shadowCrc32;       // 影子区CRC(覆盖0x100~0x11F)
+    char     shadowHwVersion[VER_STR_LEN];
+    char     shadowSwVersion[VER_STR_LEN];
+    char     shadowBootVersion[VER_STR_LEN];
+    uint8_t  shadowReserved[172];
+} DeviceParam_t;
+
+_Static_assert(sizeof(DeviceParam_t) == PARAM_FLASH_SIZE, "...");
+</pre>
+
+<h3>4.4 版本信息宏定义 (config.h)</h3>
+<pre>
+// Common/config.h — 版本信息宏定义
+#define DEV_HW_VERSION     "VET6-A01"      // 硬件版本，16字节补零
+#define DEV_SW_VERSION     "V1.3"          // 软件版本，16字节补零
+#define DEV_BOOT_VERSION   "V1.0"         // BOOT版本，16字节补零
+
+// 版本同步逻辑（BOOT/APP上电时）:
+if (Strncmp(p->hwVersion, DEV_HW_VERSION, VER_STR_LEN) != 0 ||
+    Strncmp(p->swVersion, DEV_SW_VERSION, VER_STR_LEN) != 0 ||
+    Strncmp(p->bootVersion, DEV_BOOT_VERSION, VER_STR_LEN) != 0)
+{
+    // 宏定义与参数区不一致 → 更新参数区
+    Strncpy(p->hwVersion, DEV_HW_VERSION, VER_STR_LEN);
+    Strncpy(p->swVersion, DEV_SW_VERSION, VER_STR_LEN);
+    Strncpy(p->bootVersion, DEV_BOOT_VERSION, VER_STR_LEN);
+    PadZero(p->hwVersion, VER_STR_LEN);   // 不全补零
+    PadZero(p->swVersion, VER_STR_LEN);
+    PadZero(p->bootVersion, VER_STR_LEN);
+    ParamSave(p);
+}
+
+// 获取版本：读取参数区字符串即可
+//"VET6-A01\0\0\0\0\0\0\0\0" → 直接当字符串使用
+//"V1.3\0\0\0\0\0\0\0\0\0\0\0\0\0" → 直接当字符串使用
+</pre>
+
+<div class="info">
+<strong>版本信息设计要点：</strong>
+<ul>
+  <li>config.h宏定义是"真相源" — 改版本只改宏定义，重新编译</li>
+  <li>上电时自动检测不一致并同步到参数区，无需手动操作</li>
+  <li>参数区中是字符串，读取直接显示，无需解码</li>
+  <li>不同软件版本的APP编译后宏定义不同，上电自动写入参数区 → 版本天然不一致</li>
+  <li>16字节足够任何合理版本号，不足部分补'\0'</li>
+</ul>
+</div>
+</div>
+
+<!-- ============================================================ -->
+<h2>5. 方案B：单APP+升级标志（细化设计）</h2>
+
+<div class="card">
+<h3>5.1 升级状态机</h3>
+<div class="flow">
+  <div class="flow-box flow-boxApp">APP运行<br>status=RUN</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box">FC=0x02<br>status→UPG<br>ParamSave</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box">50ms延时<br>SystemReset</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box flow-boxBoot">BOOT启动<br>读status=UPG<br>留BOOT</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box">FC=0x01<br>握手确认<br>Layer=0</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box">FC=0x03<br>擦除APP区<br>(保参数)</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box">FC=0x04×N<br>写入APP</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box flow-boxVerify">FC=0x05<br>三级校验</div>
+</div>
+<div class="flow">
+  <div class="flow-box flow-boxVerify">校验结果</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box">通过: status→RUN<br>ParamSave</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box">FC=0x06<br>SystemReset</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box flow-boxApp">BOOT→跳转APP<br>APP运行</div>
+</div>
+<div class="flow">
+  <div class="flow-box flow-boxErr">校验失败</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box flow-boxBoot">status保持UPG<br>留BOOT<br>可重新升级</div>
+</div>
+
+<h3>5.2 各阶段详细设计</h3>
+
+<h4>阶段1: APP→BOOT切换 (FC=0x02)</h4>
+<pre>
+// Application/src/App_Dispatch.c — FC_ENTER_BOOT
+case FC_ENTER_BOOT: {
+    uint8_t rsp[1];
+    g_sParam.deviceStatus = PARAM_STATUS_UPG;
+    if (ParamSave(&g_sParam) != 0) {
+        rsp[0] = ENTER_BOOT_PARAM_ERR;
+        AppSendResponse(FC_ENTER_BOOT, rsp, 1);
+        break;
+    }
+    rsp[0] = RESULT_OK;
+    AppSendResponse(FC_ENTER_BOOT, rsp, 1);
+    g_sApp.BootPendingMs = g_u32SysTickMs;
+    g_sApp.State = APP_STATE_BOOT_PENDING;
+    // 50ms后NVIC_SystemReset()，进入BOOT
+    break;
+}
+</pre>
+<p>变更点：baudRateIdx→baudRate已在参数结构中，此逻辑无需改动。</p>
+
+<h4>阶段2: BOOT启动决策</h4>
+<pre>
+// Bootloader/src/main.c — main()
+int main(void) {
+    BootDebugInit();
+    ParamInit();
+    if (ParamLoad(&g_sParam) != 0) {
+        // 首次上电/参数损坏 → 初始化默认值
+        Memset8((uint8_t *)&g_sParam, 0, sizeof(g_sParam));
+        g_sParam.magic = PARAM_MAGIC;
+        g_sParam.version = PARAM_VERSION;
+        g_sParam.baudRate = 9600U;
+        g_sParam.deviceAddr = 0x01U;
+        g_sParam.deviceUidHash = Crc32CalcUid();
+        // 版本信息从宏写入
+        Strncpy(g_sParam.hwVersion, DEV_HW_VERSION, VER_STR_LEN);
+        Strncpy(g_sParam.swVersion, DEV_SW_VERSION, VER_STR_LEN);
+        Strncpy(g_sParam.bootVersion, DEV_BOOT_VERSION, VER_STR_LEN);
+        PadZero(g_sParam.hwVersion, VER_STR_LEN);
+        PadZero(g_sParam.swVersion, VER_STR_LEN);
+        PadZero(g_sParam.bootVersion, VER_STR_LEN);
+        ParamSave(&g_sParam);
+    }
+
+    // 版本同步检测
+    if (Strncmp(g_sParam.hwVersion, DEV_HW_VERSION, VER_STR_LEN) != 0 ||
+        Strncmp(g_sParam.bootVersion, DEV_BOOT_VERSION, VER_STR_LEN) != 0)
+    {
+        Strncpy(g_sParam.hwVersion, DEV_HW_VERSION, VER_STR_LEN);
+        Strncpy(g_sParam.bootVersion, DEV_BOOT_VERSION, VER_STR_LEN);
+        PadZero(g_sParam.hwVersion, VER_STR_LEN);
+        PadZero(g_sParam.bootVersion, VER_STR_LEN);
+        ParamSave(&g_sParam);
+    }
+
+    HlHostUartInit(g_sParam.baudRate);  // ← 直接用baudRate
+    HlIwdgInit();
+    ProtoParserInit(&g_sHostIf.Parser);
+
+    int stayInUpdate = (g_sParam.deviceStatus == PARAM_STATUS_UPG);
+    // ...
+}
+</pre>
+
+<h4>阶段3: 擦除APP (FC=0x03)</h4>
+<pre>
+// 擦除范围: APP_FLASH_ORIGIN ~ APP_FLASH_END
+// VET6: 0x08006000 ~ 0x08080000 (488KB)
+// C8T6: 0x08006000 ~ 0x08010000 (40KB)
+// 不触碰参数区(0x08005800~0x08005FFF)，也不触碰BOOT代码
+
+for (uint32_t addr = APP_FLASH_ORIGIN;
+     addr < APP_FLASH_END;       // ← 改为APP_FLASH_END，安全边界
+     addr += 2048) {
+    HlIwdgFeed();
+    if (FlashErasePage(addr) != 0) { eraseOk = 0; break; }
+}
+</pre>
+
+<h4>阶段4: 写入APP (FC=0x04)</h4>
+<pre>
+// 无变更，按addrOffset写入APP_FLASH_ORIGIN + offset
+// 增加边界检查：确保不超过APP_FLASH_END
+uint32_t target = APP_FLASH_ORIGIN + addrOffset;
+if (target + dataLen > APP_FLASH_END) {  // ← 防越界
+    rsp[2] = DATA_ADDR_ERR;
+    break;
+}
+</pre>
+
+<h4>阶段5: 三级校验 (FC=0x05)</h4>
+<pre>
+// FC_UPGRADE_VERIFY — 三级校验实现
+case FC_UPGRADE_VERIFY: {
+    uint8_t rsp[2];  // [0]=result, [1]=详细错误(可选)
+    rsp[0] = RESULT_OK;
+    rsp[1] = 0;
+
+    // === 基本级(始终执行) ===
+    // 1. 大小校验
+    if (g_sIap.Written != g_sIap.FwSize ||
+        g_sIap.State != IAP_DATA_DONE) {
+        rsp[0] = VERIFY_SIZE_MISMATCH;
+        BootSendResponse(FC_UPGRADE_VERIFY, devAddr, rsp, 2);
+        break;
+    }
+
+    // 2. CRC32校验
+    uint32_t calcCrc = Crc32Calc((const uint8_t *)APP_FLASH_ORIGIN,
+                                  g_sIap.FwSize);
+    if (calcCrc != g_sIap.FwCrc32) {
+        rsp[0] = VERIFY_CRC_MISMATCH;
+        BootSendResponse(FC_UPGRADE_VERIFY, devAddr, rsp, 2);
+        break;
+    }
+
+    // === 中级 ===
+    // 3. MSP向量校验 — APP首字必须为合法SP值
+    uint32_t mspVal = *(volatile uint32_t *)APP_FLASH_ORIGIN;
+    if ((mspVal & 0x2FFC0000) != 0x20000000) {
+        rsp[0] = VERIFY_VECTOR_INVALID;
+        BootSendResponse(FC_UPGRADE_VERIFY, devAddr, rsp, 2);
+        break;
+    }
+
+    // 4. Reset向量校验 — APP[4]必须在APP Flash范围内
+    uint32_t resetVec = *(volatile uint32_t *)(APP_FLASH_ORIGIN + 4);
+    if (resetVec < APP_FLASH_ORIGIN ||
+        resetVec >= APP_FLASH_ORIGIN + g_sIap.FwSize) {
+        rsp[0] = VERIFY_VECTOR_INVALID;
+        rsp[1] = 1;  // 区分：reset向量越界
+        BootSendResponse(FC_UPGRADE_VERIFY, devAddr, rsp, 2);
+        break;
+    }
+
+    // === 全级 ===
+    // 5. 绑定校验 — 固件绑定本机UID
+    uint32_t localBind = Crc32CalcReflect(
+        (const uint8_t *)APP_FLASH_ORIGIN,
+        g_sIap.FwSize,
+        (const uint8_t *)&g_sParam.deviceUidHash, 4);
+    if (localBind != g_sIap.BindVerify) {
+        rsp[0] = VERIFY_BIND_FAIL;
+        BootSendResponse(FC_UPGRADE_VERIFY, devAddr, rsp, 2);
+        break;
+    }
+
+    // 全部通过
+    BootSendResponse(FC_UPGRADE_VERIFY, devAddr, rsp, 2);
+    break;
+}
+</pre>
+
+<div class="info">
+<strong>三级校验说明：</strong>
+<ul>
+  <li><span class="tag tag-verify">基本</span> CRC32 + 大小 — 确保数据完整性（最低底线）</li>
+  <li><span class="tag tag-boot">中级</span> + MSP/Reset向量 — 确保APP可启动</li>
+  <li><span class="tag tag-sec">全级</span> + BindVerify绑定 — 确保固件属于本机</li>
+</ul>
+<p>校验级别由FC=0x03帧Data扩展字段(1B)指定。当前实现默认全级，预留中级/基本级供调试用。</p>
+</div>
+
+<h4>阶段6: 执行升级 (FC=0x06)</h4>
+<pre>
+case FC_UPGRADE_EXEC: {
+    uint8_t rsp[1];
+    rsp[0] = RESULT_OK;
+    BootSendResponse(FC_UPGRADE_EXEC, devAddr, rsp, 1);
+
+    // 更新参数 — 仅在校验通过后由FC=0x05保证
+    g_sParam.deviceStatus  = PARAM_STATUS_RUN;
+    g_sParam.appCrc32      = g_sIap.FwCrc32;
+    g_sParam.appSize       = g_sIap.FwSize;
+    g_sParam.upgradeCount++;
+    g_sParam.bindVerify    = g_sIap.BindVerify;
+    ParamSave(&g_sParam);
+
+    NVIC_SystemReset();
+    break;
+}
+</pre>
+</div>
+
+<!-- ============================================================ -->
+<h2>6. 掉电保护机制</h2>
+
+<div class="card">
+<h3>6.1 全场景掉电分析</h3>
+<table>
+  <tr><th>故障点</th><th>参数区</th><th>APP区</th><th>恢复策略</th></tr>
+  <tr>
+    <td>FC=0x02写入UPG后掉电</td>
+    <td>status=UPG(已保存)</td>
+    <td>完好</td>
+    <td>重启→BOOT→UPG→留BOOT→可升级（旧APP虽完好但安全优先）</td>
+  </tr>
+  <tr>
+    <td>FC=0x03擦除APP中途掉电</td>
+    <td>status=UPG(安全)</td>
+    <td>部分擦除</td>
+    <td>重启→BOOT→UPG→留BOOT→重新FC=0x03擦除+写入</td>
+  </tr>
+  <tr>
+    <td>FC=0x04写入中途掉电</td>
+    <td>status=UPG(安全)</td>
+    <td>部分写入</td>
+    <td>同上</td>
+  </tr>
+  <tr>
+    <td>FC=0x05校验失败</td>
+    <td>status=UPG</td>
+    <td>完整但无效</td>
+    <td>留BOOT→重新升级（擦除+写入+校验）</td>
+  </tr>
+  <tr>
+    <td>FC=0x06 ParamSave掉电</td>
+    <td>可能损坏(shadow恢复)</td>
+    <td>完整有效</td>
+    <td>BOOT→ParamLoad→shadow恢复→status=UPG→留BOOT→可重新升级</td>
+  </tr>
+  <tr>
+    <td>FC=0x06后复位前掉电</td>
+    <td>status=RUN已写入</td>
+    <td>完整有效</td>
+    <td>重启→BOOT→status=RUN→校验APP→跳转成功</td>
+  </tr>
+  <tr>
+    <td><strong>任何阶段</strong></td>
+    <td><strong>在BOOT尾部，永不擦除</strong></td>
+    <td>可能损坏</td>
+    <td style="color:#308030;font-weight:bold;">BOOT完好+参数可恢复=永不砖</td>
+  </tr>
+</table>
+
+<h3>6.2 ParamSave掉电安全策略</h3>
+<pre>
+ParamSave写入顺序（3阶段）:
+  Phase 1: 擦除参数页(0x08005800, 2KB页)
+  Phase 2: 写入影子区(0x100~0x1FF, 256B) — 先写影子
+  Phase 3: 写入主区(0x00~0xFF, 256B) — 后写主区
+
+掉电恢复:
+  主区CRC不匹配 → 检查影子区CRC
+  影子区完好 → 从影子区恢复主区关键字段 → 重新ParamSave
+  影子区也损坏 → 初始化默认值 → status=UPG → 留BOOT
+</pre>
+
+<div class="ok">
+<strong>掉电安全核心保证：</strong>
+<ol>
+  <li>参数区在BOOT尾部(0x08005800)，升级APP时<strong>从不擦除</strong></li>
+  <li>参数写入影子区先行 → 掉电时总有影子可恢复</li>
+  <li>BOOT代码区永不在线修改 → 底层恢复始终可用</li>
+  <li>upgradeCount在影子区也有备份，掉电不丢失</li>
+</ol>
+</div>
+</div>
+
+<!-- ============================================================ -->
+<h2>7. 防复制机制</h2>
+
+<div class="card">
+<pre>
+绑定校验流程:
+┌───────────────┐                    ┌───────────────┐
+│   上位机      │                    │   MCU BOOT    │
+├───────────────┤                    ├───────────────┤
+│ 1. 握手FC=01  │──────────────────→│ 返回UidHash   │
+│               │←──────────────────│               │
+│ 2. 计算:      │                    │               │
+│ bindVerify=   │                    │               │
+│ ReflectCRC32( │                    │               │
+│  固件+        │                    │               │
+│  UidHash_4B)  │                    │               │
+│               │                    │               │
+│ 3. FC=0x03    │──────────────────→│ 保存bindVerify │
+│ +fwSize,Crc,  │                    │               │
+│  Ver,bind     │                    │               │
+│               │                    │               │
+│ 4. FC=0x04×N  │──────────────────→│ 写入APP Flash │
+│               │                    │               │
+│ 5. FC=0x05    │──────────────────→│ 重算:         │
+│               │                    │ localBind=    │
+│               │                    │ ReflectCRC32( │
+│               │                    │  APP+本机UID) │
+│               │←──────────────────│ 比对结果      │
+└───────────────┘                    └───────────────┘
+
+攻击无效:
+  MCU_A读出固件 → 写入MCU_B
+  MCU_B BOOT → 用自己UID重算 → ≠ 固件中的bindVerify → 停BOOT
+</pre>
+<p>算法简单(CRC32+UID拼接)，实现量小，有绑定过程。防"直接复制烧录"级威胁。更高级安全需AES(超出范围)。</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>8. JumpToApp增强</h2>
+
+<div class="card">
+<pre>
+static void JumpToApp(void) {
+    typedef void (*pFnApp)(void);
+
+    // 1) MSP向量合法性
+    if ((*(volatile uint32_t *)APP_FLASH_ORIGIN & 0x2FFC0000) != 0x20000000)
+        return;
+
+    // 2) Reset向量合法性
+    uint32_t resetVec = *(volatile uint32_t *)(APP_FLASH_ORIGIN + 4);
+    if (resetVec < APP_FLASH_ORIGIN ||
+        resetVec >= APP_FLASH_ORIGIN + APP_FLASH_SIZE)
+        return;
+
+    // 3) APP CRC校验（如果参数区记录了有效值）
+    if (g_sParam.appCrc32 != 0 && g_sParam.appSize != 0 &&
+        g_sParam.appSize <= APP_FLASH_SIZE) {
+        uint32_t crc = Crc32Calc((const uint8_t *)APP_FLASH_ORIGIN,
+                                  g_sParam.appSize);
+        if (crc != g_sParam.appCrc32) return;
+    }
+
+    // 4) 原有跳转逻辑
+    __asm volatile ("cpsid i");
+    for (int i = 0; i < 8; i++) NVIC->ICER[i] = 0xFFFFFFFF;
+    for (int i = 0; i < 8; i++) NVIC->ICPR[i] = 0xFFFFFFFF;
+    DMA1_Channel6->CCR = 0;
+    DMA1_Channel7->CCR = 0;
+    USART2->CR1 = 0;
+    USART2->CR2 = 0;
+    USART2->CR3 = 0;
+    RCC->APB1ENR &= ~RCC_APB1ENR_USART2EN;
+    __asm volatile ("dsb");
+    SCB->VTOR = APP_FLASH_ORIGIN;
+    pFnApp appEntry = (pFnApp)resetVec;
+    __asm volatile ("msr msp, %0" : : "r"(*(volatile uint32_t *)APP_FLASH_ORIGIN) : );
+    __asm volatile ("dsb; isb");
+    appEntry();
+}
+</pre>
+</div>
+
+<!-- ============================================================ -->
+<h2>9. 协议变更</h2>
+
+<div class="card">
+<h3>9.1 FC=0x01 握手响应</h3>
+<pre>
+响应 (9字节):
+[0]     RESULT_OK
+[1]     PROTO_VERSION
+[2-5]   deviceUidHash (4B, LE)
+[6]     Layer: 0=BOOT, 1=APP
+[7]     deviceStatus
+[8]     baudRate (低8位，仅用于快速判断)
+</pre>
+<p>变更：[8]从baudRateIdx改为baudRate低8位（9600=0x80, 115200=0x00截断）。考虑改为2字节传baudRate低16位。或保持1字节索引兼容。建议保持baudRateIdx索引在协议中(避免截断)，参数区存原始值即可。</p>
+
+<h3>9.2 FC=0x03 升级启动 — 新增校验级别</h3>
+<pre>
+请求数据 (17字节):
+[0-3]   FwSize (4B, LE)
+[4-7]   FwCrc32 (4B, LE)
+[8-11]  FwVer (4B, LE) — 预留，可传0
+[12-15] BindVerify (4B, LE)
+[16]    VerifyLevel: 0=全, 1=中, 2=基本 (新增1字节)
+</pre>
+
+<h3>9.3 FC=0x05 校验响应 — 扩展2字节</h3>
+<pre>
+响应 (2字节):
+[0]     Result: OK / CRC_MISMATCH / SIZE_MISMATCH / VECTOR_INVALID / BIND_FAIL
+[1]     Detail: 0=无详情, 1=Reset向量越界 (新增)
+</pre>
+
+<h3>9.4 FC=0x07 设备信息响应</h3>
+<pre>
+响应 (变长):
+[0]     RESULT_OK
+[1-12]  UID (12B)
+[13-16] deviceUidHash (4B, LE)
+[17]    PROTO_VERSION
+[18]    Layer (0=BOOT, 1=APP)
+[19]    deviceStatus
+[20]    deviceAddr
+[21-24] upgradeCount (4B, LE)
+[25-40] hwVersion (16B, 字符串)
+[41-56] swVersion (16B, 字符串)
+[57-72] bootVersion (16B, 字符串)
+[73-76] baudRate (4B, LE)
+</pre>
+<p>变更：移除commMethod；appFirmwareVer由swVersion字符串替代；projectName移除；新增hwVersion/swVersion/bootVersion字符串。</p>
+</div>
+
+<!-- ============================================================ -->
+<h2>10. 代码修改清单</h2>
+
+<div class="card">
+<table>
+  <tr><th>#</th><th>文件</th><th>修改内容</th><th>工作量</th></tr>
+  <tr><td>1</td><td><code>Common/config.h</code></td><td>PARAM_FLASH_ORIGIN→0x08005800; 新增DEV_HW_VERSION/DEV_SW_VERSION/DEV_BOOT_VERSION宏; PARAM_FLASH_SIZE→512; 新增APP_FLASH_END</td><td>中</td></tr>
+  <tr><td>2</td><td><code>Common/config_C8T6.h</code></td><td>PARAM_FLASH_ORIGIN→0x08005800; 同上宏定义</td><td>中</td></tr>
+  <tr><td>3</td><td><code>Common/Update/Param.h</code></td><td>DeviceParam_t重构(512B); 移除旧字段; 新增版本字符串字段; 影子区重设计</td><td>大</td></tr>
+  <tr><td>4</td><td><code>Common/Update/Param.c</code></td><td>ParamLoad/ParamSave适配新结构; ParamSave写入顺序调整; CRC覆盖范围调整</td><td>大</td></tr>
+  <tr><td>5</td><td><code>Bootloader/ld/boot_flash.ld</code></td><td>FLASH LENGTH 24K→22K; 新增PARAM段声明</td><td>小</td></tr>
+  <tr><td>6</td><td><code>Common/STM32F103VE_boot.ld</code></td><td>同上</td><td>小</td></tr>
+  <tr><td>7</td><td><code>Common/STM32F103C8_boot.ld</code></td><td>同上</td><td>小</td></tr>
+  <tr><td>8</td><td><code>Bootloader/src/main.c</code></td><td>FC=0x05真实校验; JumpToApp增强; 版本同步; baudRate替代baudRateIdx; FC=0x07新格式</td><td>大</td></tr>
+  <tr><td>9</td><td><code>Common/HostIf/Protocol.h</code></td><td>新增校验级别枚举; VERIFY_RESULT扩展</td><td>小</td></tr>
+  <tr><td>10</td><td><code>Common/HostIf/Protocol.c</code></td><td>新增PadZero/Strncpy工具函数</td><td>小</td></tr>
+  <tr><td>11</td><td><code>Application/src/App_Dispatch.c</code></td><td>FC=0x01/0x07适配新格式; 版本同步逻辑; baudRate替代</td><td>中</td></tr>
+  <tr><td>12</td><td><code>Application/src/main.c</code></td><td>HlHostUartInit读取g_sParam.baudRate; 版本同步</td><td>小</td></tr>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<h2>11. 升级失败恢复全景</h2>
+
+<div class="card">
+<pre>
+失败场景                              参数区状态       恢复手段
+────────────────────────────────────────────────────────────────
+1. FC=0x02后无响应                    status=UPG      轮询握手→手动复位→
+                                                       BOOT→UPG→留BOOT
+
+2. FC=0x03擦除失败                    status=UPG      重试3次→仍失败→硬件检修
+
+3. FC=0x04传输中途掉电                status=UPG      APP不完整，参数安全
+                                                       →重启→BOOT→UPG→留BOOT
+                                                       →重新FC=0x03
+
+4. FC=0x04超时                        status=UPG      上位机重试(3次)
+
+5. FC=0x05 CRC不匹配                  status=UPG      APP写入错误
+                                                       →留BOOT→重新升级
+
+6. FC=0x05 绑定失败                   status=UPG      固件不属于本机
+                                                       →留BOOT→需正确固件
+
+7. FC=0x06后无响应                    status=RUN      正在重启→等3秒→握手
+
+8. 任何阶段拔线                        不影响设备       重连→握手→根据Layer决定
+
+9. ParamSave掉电                      shadow恢复      status→UPG→留BOOT→升级
+
+10. APP运行中异常/看门狗超时          status=RUN      复位→BOOT→RUN→校验APP→
+                                                       通过→跳转 / 失败→留BOOT
+</pre>
+</div>
+
+<!-- ============================================================ -->
+<h2>12. 优化建议</h2>
+
+<div class="card">
+<ol>
+  <li><strong>BOOT区FLASH写保护</strong>：Option Bytes写保护0x08000000~0x08005FFF(含参数区)，防止意外写入。参数区写入需先解除写保护 → 增加安全性但增加ParamSave复杂度，可选实现</li>
+  <li><strong>启用IWDG</strong>：BOOT中启用看门狗，APP死机→看门狗复位→回BOOT→校验APP→可跳转可升级</li>
+  <li><strong>APP波特率读取参数</strong>：App main.c中HlHostUartInit(9600)改为HlHostUartInit(g_sParam.baudRate)</li>
+  <li><strong>版本日志宏统一</strong>：debug log中"FW v0.13"改为读取g_sParam.swVersion</li>
+  <li><strong>FC=0x06校验后保存</strong>：当前先保存再复位 → 改为先校验再保存(更安全)</li>
+  <li><strong>升级速率自适应</strong>：握手后可协商更高波特率加快传输</li>
+  <li><strong>升级诊断FC=0x08</strong>：回传上次失败原因(掉电阶段/CRC错误/绑定失败等)</li>
+  <li><strong>C8T6注意</strong>：stm32f10x_md最小擦除页=1KB，参数区2KB跨2页。擦除时需擦除0x08005800和0x08005C00两页。或者C8T6参数区大小改为1KB(512B主+512B影子) — 但需注意对齐</li>
+</ol>
+</div>
+
+<!-- ============================================================ -->
+<h2>13. 实施步骤</h2>
+
+<div class="card">
+<ol>
+  <li><strong>修改config.h / config_C8T6.h</strong> — PARAM_FLASH_ORIGIN→0x08005800; 新增版本宏; APP_FLASH_END</li>
+  <li><strong>修改BOOT链接脚本</strong> — FLASH LENGTH→22K; 新增PARAM段</li>
+  <li><strong>重构Param.h</strong> — DeviceParam_t 512B; 新字段; 影子区</li>
+  <li><strong>重构Param.c</strong> — ParamLoad/ParamSave适配; Crc32CalcReflect新增</li>
+  <li><strong>修改Protocol.h/c</strong> — 校验级别枚举; PadZero/Strncpy新增</li>
+  <li><strong>修改Bootloader/main.c</strong> — FC=0x05真实校验; JumpToApp增强; 版本同步; FC=0x07新格式; baudRate替代</li>
+  <li><strong>修改Application/App_Dispatch.c</strong> — FC=0x01/0x07新格式; 版本同步; baudRate替代</li>
+  <li><strong>修改Application/main.c</strong> — baudRate读取; 版本同步调用</li>
+  <li><strong>编译验证</strong> — VET6/C8T6双目标均通过</li>
+  <li><strong>掉电测试</strong> — 各阶段模拟掉电→验证恢复</li>
+</ol>
+</div>
+
+<!-- ============================================================ -->
+<h2>14. 总结</h2>
+
+<div class="card" style="background: linear-gradient(135deg, #f0eaf8 0%, #e8e0f4 100%);">
+<p style="font-size: 1.1em; text-align: center; margin: 16px 0;">
+<strong>BOOT=安全底线(24KB固定) | 参数=BOOT尾部(512B不擦除) | APP=可替换单元</strong>
+</p>
+<ul style="margin: 12px 0;">
+  <li>方案B（单APP+升级标志）— 双MCU兼容，实现简化</li>
+  <li>参数512B — 主区256B(含172B用户区) + 影子区256B</li>
+  <li>版本信息 — config.h字符串宏定义，上电自动同步</li>
+  <li>三级校验 — 基本(CRC+Size) / 中级(+向量) / 全级(+绑定)</li>
+  <li>防复制 — CRC32+UID BindVerify</li>
+  <li>掉电安全 — 参数在BOOT尾部永不擦除 + shadow双重保护</li>
+  <li>跨项目统一 — BOOT区24KB+参数0x08005800始终不变</li>
+</ul>
+<p style="text-align: center; margin-top: 16px;">请确认方案，确认后实施代码修改。</p>
+</div>
+
+<p class="ver">Plan v3.0 — 2026-05-30 — 参数512B、仅方案B细化、版本字符串宏 — 等待确认</p>
+
+</div>
+</body>
+</html>

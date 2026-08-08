@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>ComforTool Round0012 计划</title>
+<style>
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; max-width: 1000px; margin: 0 auto; padding: 20px; background: #f8f5ff; color: #403060; line-height: 1.65; }
+  h1 { color: #7830b0; border-bottom: 2px solid #c8b8e0; padding-bottom: 8px; }
+  h2 { color: #7830b0; margin-top: 32px; border-left: 4px solid #7830b0; padding-left: 10px; }
+  h3 { color: #a050c0; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+  th, td { border: 1px solid #d8d0e8; padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: #e0d4f0; color: #503070; }
+  td { background: #fdfaff; }
+  .task { background: #f4f0fa; border-left: 4px solid #7830b0; padding: 12px 16px; margin: 14px 0; border-radius: 4px; }
+  .task h3 { margin-top: 0; }
+  .file { font-family: Menlo, monospace; color: #7830b0; background: #f0ecf8; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+  .tag { display: inline-block; background: #7830b0; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 0.75em; margin-right: 4px; }
+  .tag-green { background: #50a050; }
+  .tag-orange { background: #d08020; }
+  pre { background: #2d2040; color: #e8e0f8; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.85em; line-height: 1.5; }
+  ul li { margin: 4px 0; }
+</style>
+</head>
+<body>
+
+<h1>ComforTool Round0012 — 执行计划</h1>
+<p><strong>日期:</strong> 2026-07-18 &nbsp;|&nbsp; <strong>版本:</strong> V1.0 &nbsp;|&nbsp; <strong>状态:</strong> 待确认</p>
+
+<h2>需求概览</h2>
+<table>
+  <tr><th>#</th><th>需求</th><th>类别</th></tr>
+  <tr><td>1</td><td>UI 显示调整</td><td><span class="tag tag-orange">UI</span></td></tr>
+  <tr><td>2</td><td>工程名 SwComForTool V1.0, 右下角显示</td><td><span class="tag tag-orange">UI</span></td></tr>
+  <tr><td>3</td><td>区域名称英文化 (Handshake/Function/Log/Exporting Area)</td><td><span class="tag tag-orange">UI</span></td></tr>
+  <tr><td>4</td><td>校验描述仅固件更新期间显示</td><td><span class="tag tag-orange">UI</span></td></tr>
+  <tr><td>5</td><td>Log / Exporting 独立边框</td><td><span class="tag tag-orange">UI</span></td></tr>
+  <tr><td>6</td><td>Log 移到 Exporting 下面 (交换位置)</td><td><span class="tag tag-orange">UI</span></td></tr>
+  <tr><td>7</td><td>最下端一行: 系统日志(左) + 版本号(右)</td><td><span class="tag tag-orange">UI</span></td></tr>
+  <tr><td>8</td><td>Handshake 重设计 (端口/路径/连接按钮)</td><td><span class="tag tag-orange">UI</span>+<span class="tag">逻辑</span></td></tr>
+</table>
+
+<h2>详细执行计划</h2>
+
+<!-- Task 1 -->
+<div class="task">
+<h3>Task 1: 工程重命名 SwComForTool V1.0 <span class="tag">基建</span></h3>
+<p><strong>文件:</strong> <span class="file">CMakeLists.txt, src/Version.h.in, src/main.cpp, .vscode/launch.json, build/</span></p>
+<ul>
+  <li>CMakeLists.txt: <code>project(SwComForTool VERSION 1.0.0 LANGUAGES CXX)</code></li>
+  <li>comforTool → swcomfortool (可执行文件名)</li>
+  <li>MACOSX_BUNDLE_GUI_IDENTIFIER: <code>com.swcomfor.tool</code></li>
+  <li>build_win.bat / CMakeLists: 移除所有 ComforTool 引用</li>
+  <li>备份脚本 backup.sh 排除规则保持不变, 但项目名调整: Round_NNN_NNN 路径不动 (历史快照)</li>
+  <li>窗口标题: <code>"SwComForTool V1.0"</code></li>
+  <li>右下角 statusBar 显示版本: 状态栏 (左) + 版本 V1.0 (右), 来自 QStatusBar</li>
+</ul>
+</div>
+
+<!-- Task 2 -->
+<div class="task">
+<h3>Task 2: UI 区域英文命名 <span class="tag tag-orange">UI</span></h3>
+<p><strong>文件:</strong> <span class="file">src/MainWindow.cpp</span></p>
+<ul>
+  <li>"握手栏" → "Handshake Area"</li>
+  <li>"功能栏" → "Function Area"</li>
+  <li>"日志区" → "Log Area"</li>
+  <li>"发送区" → "Exporting Area"</li>
+</ul>
+</div>
+
+<!-- Task 3 -->
+<div class="task">
+<h3>Task 3: 握手栏完全重设计 <span class="tag tag-orange">UI</span>+<span class="tag">逻辑</span></h3>
+<p><strong>文件:</strong> <span class="file">src/MainWindow.cpp, src/MainWindow.h</span></p>
+<h4>3.1 端口(原 "接口")</h4>
+<ul>
+  <li>标签: "端口:"</li>
+  <li>QComboBox 端口选择: "USB" (默认) / "COM" (暂不启用, 颜色减淡 disabled look)</li>
+  <li>驱动切换: 改 <code>m_ifaceCombo</code> 数据为字符串 "USB"/"COM", 内部映射 TransportType</li>
+</ul>
+<h4>3.2 路径(原 "通信接口")</h4>
+<ul>
+  <li>标签: "路径:"</li>
+  <li>QLabel (而非 QComboBox), 默认显示 "VID 5377:PID 5378", 固定宽度 180px 居中</li>
+  <li>点击 Label → 弹出 QMenu 列出当前 HID 设备 (VID + 描述), 选中后回填 Label</li>
+  <li>触发枚举 + 显示方式: 与 refreshPorts 一致, 简化显示 "VID XXXX:PID XXXX"</li>
+</ul>
+<h4>3.3 连接按钮</h4>
+<ul>
+  <li>默认 "连接", 紫色背景 (与现有 openBtn 配色一致)</li>
+  <li>连接成功后: 文字 "断开", 背景绿色 (QSS 动态切换)</li>
+  <li>逻辑: onOpen 中翻转 isOpen 状态, 通过 setProperty/style 更新按钮样式</li>
+</ul>
+<h4>3.4 自动连接逻辑 (Vid 0x5377)</h4>
+<ul>
+  <li>点击连接时: 优先枚举所有 HID, 若有 VID=0x5377 → 直接打开</li>
+  <li>否则: 取 m_portCombo currentIndex(0) (默认第一个 HID) → 填入但不自动打开</li>
+</ul>
+</div>
+
+<!-- Task 4 -->
+<div class="task">
+<h3>Task 4: 校验描述仅固件更新期间显示 <span class="tag tag-orange">UI</span></h3>
+<p><strong>文件:</strong> <span class="file">src/MainWindow.cpp</span></p>
+<ul>
+  <li>升级控件 (m_progressBar, m_verifyLevelCombo, verifyLabel) 默认 <code>visible=false</code></li>
+  <li>click "更新固件" → flashControls(true) 中显示 + 升级完成后 endUpgrade() 隐藏</li>
+  <li>左下角操作描述行 (m_upgradeStatusLabel) 同样仅升级期间可见</li>
+</ul>
+</div>
+
+<!-- Task 5 -->
+<div class="task">
+<h3>Task 5: Log / Exporting 独立边框 <span class="tag tag-orange">UI</span></h3>
+<p><strong>文件:</strong> <span class="file">src/MainWindow.cpp, stylesheet</span></p>
+<ul>
+  <li>现有 Handshake Area 用 QGroupBox 已有边框</li>
+  <li>Log / Exporting 各自包为 QFrame (setFrameShape(QFrame::Box)) 或 QGroupBox</li>
+  <li>样式: <code>border: 1px solid #c8b8e0; border-radius: 6px</code> 与 Handshake 一致</li>
+  <li>已有 logProgressBar 嵌入日志区底部 (升级时显示)</li>
+</ul>
+</div>
+
+<!-- Task 6 -->
+<div class="task">
+<h3>Task 6: Log 与 Exporting 位置交换 <span class="tag tag-orange">UI</span></h3>
+<p><strong>文件:</strong> <span class="file">src/MainWindow.cpp</span></p>
+<ul>
+  <li>QSplitter Qt::Vertical 当前 addWidget: logWidget, sendWidget</li>
+  <li>改为: sendWidget (Exporting), logWidget (Log) → Exporting 在上, Log 在下</li>
+  <li>setStretchFactor 同步调整 (Exporting 比例小, Log 比例大)</li>
+</ul>
+</div>
+
+<!-- Task 7 -->
+<div class="task">
+<h3>Task 7: 最下端状态栏 (系统日志 + 版本号) <span class="tag tag-orange">UI</span></h3>
+<p><strong>文件:</strong> <span class="file">src/MainWindow.cpp</span></p>
+<ul>
+  <li>使用 QStatusBar 替代当前 left-bottom 操作描述行</li>
+  <li>左: 状态消息 (替代 m_funcStatusLabel + 当前 left-bottom)</li>
+  <li>右: 永久显示 "SwComForTool V1.0" + 编译日期 (永久消息)</li>
+  <li>addPermanentWidget 用于版本号</li>
+  <li>扫描 USB / 连接状态 等消息用 <code>statusBar()->showMessage(...)</code> (短暂) 或 statusBar 永久 label</li>
+</ul>
+</div>
+
+<!-- Task 8 -->
+<div class="task">
+<h3>Task 8: 底部日志/调试控件清理 <span class="tag tag-orange">UI</span></h3>
+<p>左下角现有的 opStatusLabel 已不必要 (被 statusBar 替代). 移除该布局.</p>
+</div>
+
+<h2>关键文件改动清单</h2>
+<table>
+<tr><th>文件</th><th>类型</th><th>改动摘要</th></tr>
+<tr><td><span class="file">CMakeLists.txt</span></td><td>修改</td><td>project 名, 源文件名, bundle ID</td></tr>
+<tr><td><span class="file">src/main.cpp</span></td><td>修改</td><td>窗口标题 SwComForTool V1.0</td></tr>
+<tr><td><span class="file">src/Version.h.in</span></td><td>不变</td><td>版本 1.0</td></tr>
+<tr><td><span class="file">src/MainWindow.h/.cpp</span></td><td>大改</td><td>UI 重设计 + 握手按钮逻辑</td></tr>
+<tr><td><span class="file">.vscode/launch.json</span></td><td>修改</td><td>program 路径更新</td></tr>
+<tr><td><span class="file">build_win.bat</span></td><td>修改</td><td>路径/项目名</td></tr>
+</table>
+
+<h2>新增 UI 元素</h2>
+<ul>
+  <li><strong>QStatusBar</strong> 永久版本标签 (右下) + 状态消息 (左)</li>
+  <li><strong>QLabel (路径显示)</strong> 替代 m_portCombo, 点击触发 QMenu</li>
+  <li><strong>QPushButton (连接)</strong> 状态翻转 (文字+颜色)</li>
+  <li>Log / Exporting 用 QFrame (Box border) 包装</li>
+</ul>
+
+<h2>执行顺序</h2>
+<ol>
+  <li>Task 1: 工程重命名 (CMake, build 系统) — 先确保构建链通</li>
+  <li>Task 5+6: Log/Exporting 边框 + 位置交换</li>
+  <li>Task 3: 握手栏重设计 (端口/路径/连接按钮)</li>
+  <li>Task 7: 状态栏</li>
+  <li>Task 4: 校验描述隐藏</li>
+  <li>Task 2: 区域英文名 (小改动, 最后统一)</li>
+  <li>构建 + 验证</li>
+  <li>生成 Report.html</li>
+</ol>
+
+<h2>风险</h2>
+<ul>
+  <li>工程重命名涉及 build 目录清理 (旧 build 删除)</li>
+  <li>握手按钮动态样式需 QSS setProperty 才能跨平台</li>
+  <li>版本号永久显示需要放 statusBar 永久 widget, 不能普通消息 (会被覆盖)</li>
+  <li>进度条/校验描述默认隐藏, 升级期间才显示</li>
+</ul>
+
+</body>
+</html>

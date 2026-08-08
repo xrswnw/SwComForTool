@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ComforTool Round009 计划</title>
+<style>
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; max-width: 960px; margin: 0 auto; padding: 20px; background: #f8f5ff; color: #403060; }
+  h1 { color: #7830b0; border-bottom: 2px solid #c8b8e0; padding-bottom: 8px; }
+  h2 { color: #7830b0; margin-top: 32px; }
+  h3 { color: #a050c0; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+  th, td { border: 1px solid #d8d0e8; padding: 8px 12px; text-align: left; }
+  th { background: #e0d4f0; color: #503070; }
+  td { background: #fdfaff; }
+  .task { background: #f4f0fa; border-left: 4px solid #7830b0; padding: 12px 16px; margin: 12px 0; border-radius: 4px; }
+  .task h3 { margin-top: 0; }
+  .highlight { background: #fff3cd; border-left-color: #c09030; }
+  .file { font-family: Menlo, monospace; color: #7830b0; background: #f0ecf8; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+  .tag { display: inline-block; background: #7830b0; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 0.75em; margin-right: 4px; }
+  .tag-green { background: #50a050; }
+  .tag-orange { background: #d08020; }
+  code { font-family: Menlo, monospace; background: #f0ecf8; padding: 1px 4px; border-radius: 2px; font-size: 0.9em; }
+  pre { background: #2d2040; color: #e8e0f8; padding: 16px; border-radius: 6px; overflow-x: auto; font-size: 0.85em; line-height: 1.5; }
+  .check { color: #50a050; font-weight: bold; }
+  .warn { color: #c050a0; font-weight: bold; }
+  ul li { margin: 4px 0; }
+</style>
+</head>
+<body>
+
+<h1>ComforTool Round009 — 执行计划</h1>
+<p><strong>日期:</strong> 2026-05-30 &nbsp;|&nbsp; <strong>版本:</strong> V1.0</p>
+
+<h2>需求概览</h2>
+<table>
+  <tr><th>#</th><th>需求</th><th>状态</th></tr>
+  <tr><td>1</td><td>部分小修正</td><td><span class="tag tag-orange">待评估</span></td></tr>
+  <tr><td>2</td><td>打包脚本改进：全量包，命名=工程名+版本号</td><td><span class="tag tag-orange">待改进</span></td></tr>
+  <tr><td>3</td><td>增加宏定义控制日志输出，调试默认开启，打包时关闭</td><td><span class="tag">新增</span></td></tr>
+  <tr><td>4</td><td>日志并非全部移除，保留BOOT完成日志（无论成功失败）</td><td><span class="tag">新增</span></td></tr>
+  <tr><td>5</td><td>版本信息中软件信息移到前方，硬件信息随后</td><td><span class="tag">修正</span></td></tr>
+  <tr><td>6</td><td>日志区和发送区默认十六进制勾选</td><td><span class="tag">修正</span></td></tr>
+</table>
+
+<h2>当前代码问题分析</h2>
+<ul>
+  <li><strong>需求3-宏定义:</strong> 项目中 <strong>无任何</strong> <code>qDebug</code>/<code>ENABLE_LOG</code> 等日志宏，所有日志都是UI层的 <code>appendLog</code>/<code>appendSystemLog</code>，无法编译期关闭</li>
+  <li><strong>需求4-BOOT完成日志:</strong> 升级流程中已有BOOT完成日志，但需确保打包关闭日志后仍保留</li>
+  <li><strong>需求5-版本排序:</strong> <code>MainWindow.cpp:648</code> APP模式为 <code>hwVersion + " " + swVersion</code>（硬件在前），应改为软件在前</li>
+  <li><strong>需求6-Hex默认:</strong> <code>m_logHexCheck</code> 和 <code>m_sendHexCheck</code> 均未 <code>setChecked(true)</code></li>
+  <li><strong>需求2-打包:</strong> 现有脚本基本可用，但需改为独立全量包(文件夹命名=工程名+版本号)</li>
+</ul>
+
+<h2>详细执行计划</h2>
+
+<!-- ========== Task 1 ========== -->
+<div class="task">
+<h3>Task 1: 日志宏定义体系 <span class="tag">核心</span></h3>
+<p><strong>目标:</strong> 增加 <code>COMFORTOOL_LOG</code> 宏，编译期控制日志输出开关</p>
+
+<h4>1.1 CMakeLists.txt 修改</h4>
+<p>在 <code>CMakeLists.txt</code> 中增加日志宏选项：</p>
+<pre>
+# 日志开关: 默认ON(调试), 打包时OFF
+option(COMFORTOOL_LOG "Enable log output" ON)
+if(COMFORTOOL_LOG)
+    target_compile_definitions(ComforTool PRIVATE COMFORTOOL_LOG=1)
+endif()
+</pre>
+
+<h4>1.2 MainWindow.cpp 修改 — appendSystemLog 受宏控制</h4>
+<p>在 <code>appendSystemLog</code> 入口增加编译期判断，BOOT完成日志（无论成功失败）始终保留：</p>
+<pre>
+void MainWindow::appendSystemLog(const QString &msg, const QColor &color)
+{
+#ifndef COMFORTOOL_LOG
+    // 即使关闭日志，仍保留BOOT完成相关日志
+    if (!msg.contains("升级成功") && !msg.contains("升级执行失败")
+        && !msg.contains("仍停留在Boot"))
+        return;
+#endif
+    // ... 原有逻辑不变
+}
+</pre>
+
+<h4>1.3 MainWindow.cpp 修改 — appendLog 受宏控制</h4>
+<p>在 <code>appendLog</code> 入口增加编译期判断，当日志关闭时跳过普通通信日志：</p>
+<pre>
+void MainWindow::appendLog(const QString &prefix, const QByteArray &data,
+                           const QColor &color, const QString &note)
+{
+#ifndef COMFORTOOL_LOG
+    return;
+#endif
+    // ... 原有逻辑不变
+}
+</pre>
+
+<h4>1.4 ProtocolParser.cpp 清理</h4>
+<p>移除 <code>#include <QDebug></code>（当前未使用任何qDebug函数）</p>
+
+<h4>影响范围:</strong></p>
+<table>
+  <tr><th>文件</th><th>改动</th></tr>
+  <tr><td><span class="file">CMakeLists.txt</span></td><td>增加 <code>option(COMFORTOOL_LOG)</code> + <code>target_compile_definitions</code></td></tr>
+  <tr><td><span class="file">src/MainWindow.cpp</span></td><td><code>appendLog</code> / <code>appendSystemLog</code> 增加宏守卫</td></tr>
+  <tr><td><span class="file">src/ProtocolParser.cpp</span></td><td>移除无用 <code>#include <QDebug></code></td></tr>
+</table>
+</div>
+
+<!-- ========== Task 2 ========== -->
+<div class="task">
+<h3>Task 2: 版本信息排序修正 <span class="tag tag-green">修正</span></h3>
+<p><strong>目标:</strong> 软件信息在前，硬件信息在后</p>
+
+<h4>2.1 MainWindow.cpp:648 修改</h4>
+<p>当前代码：</p>
+<pre>
+verStr = devInfo.hwVersion + " " + devInfo.swVersion;  // 硬件在前 ✗
+</pre>
+<p>改为：</p>
+<pre>
+verStr = devInfo.swVersion + " " + devInfo.hwVersion;  // 软件在前 ✓
+</pre>
+
+<p>BOOT模式保持不变：<code>"BOOT_" + bootVersion + " " + hwVersion</code>（BOOT版本本质是软件信息）</p>
+
+<h4>影响范围:</h4>
+<table>
+  <tr><th>文件</th><th>改动</th></tr>
+  <tr><td><span class="file">src/MainWindow.cpp</span>第648行</td><td><code>hwVersion + " " + swVersion</code> → <code>swVersion + " " + hwVersion</code></td></tr>
+</table>
+</div>
+
+<!-- ========== Task 3 ========== -->
+<div class="task">
+<h3>Task 3: 默认十六进制勾选 <span class="tag tag-green">修正</span></h3>
+<p><strong>目标:</strong> 日志区和发送区默认勾选Hex</p>
+
+<h4>3.1 MainWindow.cpp 修改</h4>
+<p>在 <code>m_logHexCheck</code> 创建后增加默认勾选：</p>
+<pre>
+m_logHexCheck = new QCheckBox(tr("Hex显示"));
+m_logHexCheck->setChecked(true);  // ← 新增: 默认十六进制
+</pre>
+
+<p>在 <code>m_sendHexCheck</code> 创建后增加默认勾选：</p>
+<pre>
+m_sendHexCheck = new QCheckBox(tr("Hex发送"));
+m_sendHexCheck->setChecked(true);  // ← 新增: 默认十六进制
+</pre>
+
+<h4>3.2 onDebugPack 保持一致</h4>
+<p><code>MainWindow.cpp:739</code> 已有 <code>m_sendHexCheck->setChecked(true)</code>，无需改动，保持一致。</p>
+
+<h4>影响范围:</h4>
+<table>
+  <tr><th>文件</th><th>改动</th></tr>
+  <tr><td><span class="file">src/MainWindow.cpp</span>第335行后</td><td>增加 <code>m_logHexCheck->setChecked(true)</code></td></tr>
+  <tr><td><span class="file">src/MainWindow.cpp</span>第394行后</td><td>增加 <code>m_sendHexCheck->setChecked(true)</code></td></tr>
+</table>
+</div>
+
+<!-- ========== Task 4 ========== -->
+<div class="task highlight">
+<h3>Task 4: 打包脚本全量包改进 <span class="tag tag-orange">改进</span></h3>
+<p><strong>目标:</strong> 打出能在其它电脑直接运行的全量包，文件夹命名=工程名+版本号</p>
+
+<h4>4.1 macOS脚本 issue/pack.sh 重写</h4>
+<p>改进要点：</p>
+<ul>
+  <li><strong>关闭日志编译</strong>：cmake增加 <code>-DCOMFORTOOL_LOG=OFF</code></li>
+  <li><strong>全量包结构</strong>：打包为 <code>ComforToolV1.1_macOS/</code> 文件夹（而非直接zip根目录散放）</li>
+  <li><strong>macdeployqt完善</strong>：确保Qt框架和SerialPort插件完整部署</li>
+  <li><strong>编译后再开启日志</strong>：打包完成后自动恢复 <code>COMFORTOOL_LOG=ON</code>，确保后续调试日志开启</li>
+  <li><strong>输出</strong>：<code>issue/ComforToolV1.1_macOS.zip</code>（解压后为 ComforToolV1.1_macOS/ 文件夹）</li>
+</ul>
+
+<p>关键流程：</p>
+<pre>
+1. cmake -DCOMFORTOOL_LOG=OFF -DCMAKE_BUILD_TYPE=Release
+2. cmake --build . --config Release
+3. macdeployqt 部署 (框架 + SerialPort插件)
+4. 组织到 ComforToolV1.1_macOS/ 文件夹
+5. zip -r 打包
+6. 恢复: cmake -DCOMFORTOOL_LOG=ON (重新configure, 本机调试保持日志开启)
+</pre>
+
+<h4>4.2 Windows脚本 issue/pack.bat 重写</h4>
+<p>改进要点：</p>
+<ul>
+  <li><strong>一键全量</strong>：编译 + windeployqt + 打包 全流程自动化</li>
+  <li><strong>关闭日志编译</strong>：cmake增加 <code>-DCOMFORTOOL_LOG=OFF</code></li>
+  <li><strong>输出</strong>：<code>issue/ComforToolV1.1_Win64.zip</code>（解压后为 ComforToolV1.1_Win64/ 文件夹）</li>
+  <li><strong>打包完成后恢复日志</strong></li>
+</ul>
+
+<h4>影响范围:</h4>
+<table>
+  <tr><th>文件</th><th>改动</th></tr>
+  <tr><td><span class="file">issue/pack.sh</span></td><td>重写：关闭日志编译 + 全量包文件夹结构 + 部署完善 + 曲线恢复日志</td></tr>
+  <tr><td><span class="file">issue/pack.bat</span></td><td>重写：一键全流程 + 关闭日志编译 + 全量包 + 曲线恢复日志</td></tr>
+</table>
+</div>
+
+<!-- ========== Task 5 ========== -->
+<div class="task">
+<h3>Task 5: 小修正杂项 <span class="tag tag-green">修正</span></h3>
+
+<h4>5.1 ProtocolParser.cpp 移除无效 include</h4>
+<p><code>ProtocolParser.cpp:2</code> 移除 <code>#include <QDebug></code>（无任何qDebug调用）</p>
+
+<h4>5.2 检查其他潜在小修正</h4>
+<ul>
+  <li>清理 icon/ 空目录（现有图标在 res/ 中）→ 移至 TrashCan/</li>
+  <li>SerialPortManager.h 确认无遗漏</li>
+</ul>
+</div>
+
+<!-- ========== 执行顺序 ========== -->
+<h2>执行顺序与验证</h2>
+<table>
+  <tr><th>步骤</th><th>内容</th><th>验证方式</th></tr>
+  <tr><td>1</td><td>Task 5.1: 移除无效 include + 清理空目录</td><td>编译通过</td></tr>
+  <tr><td>2</td><td>Task 3: 默认Hex勾选</td><td>启动程序观察日志区/发送区默认状态</td></tr>
+  <tr><td>3</td><td>Task 2: 版本信息排序修正</td><td>握手后观察版本显示</td></tr>
+  <tr><td>4</td><td>Task 1: 日志宏定义体系</td><td>默认编译(ON)日志正常; <code>-DCOMFORTOOL_LOG=OFF</code> 编译后普通日志消失，BOOT完成日志保留</td></tr>
+  <tr><td>5</td><td>Task 4: 打包脚本改进</td><td>issue/pack.sh 执行后检查zip包结构和运行</td></tr>
+  <tr><td>6</td><td>全量编译验证</td><td><code>-DCOMFORTOOL_LOG=ON</code> 和 <code>OFF</code> 各编译一次，验证行为</td></tr>
+</table>
+
+<h2>风险评估</h2>
+<table>
+  <tr><th>风险</th><th>影响</th><th>应对</th></tr>
+  <tr><td>日志宏关闭后遗漏部分日志</td><td>低: 升级流程BOOT完成日志已特殊保留</td><td>测试 OFF 编译，验证关键日志输出</td></tr>
+  <tr><td>macdeployqt部署不完整</td><td>中: 其他电脑可能缺少依赖</td><td>测试虚拟机或另一台Mac运行</td></tr>
+  <tr><td>pack.sh恢复日志步骤失败</td><td>低: 后续调试可能无日志</td><td>恢复步骤用重跑cmake实现，而非手动改文件</td></tr>
+</table>
+
+<h2>不涉及的内容</h2>
+<ul>
+  <li>不改动串口通信逻辑</li>
+  <li>不改动协议解析逻辑</li>
+  <li>不改动UI布局/样式</li>
+  <li>不改动备份机制（已有 watch_backup.sh / log_change.sh）</li>
+</ul>
+
+</body>
+</html>

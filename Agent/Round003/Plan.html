@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ComforTool - Round003 执行计划</title>
+    <style>
+        :root { --bg:#1a1b2e; --card:#252640; --text:#eef; --dim:#899; --green:#5ebbff; --red:#e94560; --border:#334; }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:-apple-system,"PingFang SC",sans-serif; background:var(--bg); color:var(--text); line-height:1.8; padding:40px 20px; }
+        .container { max-width:960px; margin:0 auto; }
+        h1 { text-align:center; color:var(--green); margin-bottom:30px; }
+        .phase { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:24px 28px; margin-bottom:20px; }
+        .phase-header { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+        .num { background:var(--red); color:#fff; width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; flex-shrink:0; }
+        .phase-title { font-size:1.15em; font-weight:600; color:var(--green); }
+        .desc { color:var(--dim); font-size:0.9em; margin-bottom:10px; }
+        ul { list-style:none; padding:0; }
+        ul li { padding:5px 0 5px 24px; position:relative; }
+        ul li::before { content:"☐"; position:absolute; left:0; color:var(--red); }
+        .tag { display:inline-block; font-size:0.7em; padding:2px 6px; border-radius:4px; margin-left:6px; }
+        .tag-ui { background:rgba(94,187,255,0.12); color:var(--green); }
+        .tag-fix { background:rgba(233,69,96,0.12); color:var(--red); }
+        .note { background:rgba(233,69,96,0.06); border-left:3px solid var(--red); padding:10px 14px; border-radius:0 8px 8px 0; margin-top:12px; font-size:0.88em; color:var(--dim); }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Round003 执行计划</h1>
+
+    <div class="phase">
+        <div class="phase-header"><div class="num">1</div><div class="phase-title">修正窗口比例</div></div>
+        <p class="desc">当前1280×960比例偏大，缩小一倍至640×480初始尺寸</p>
+        <ul>
+            <li>resize(1280, 960) 改为 resize(640, 480) <span class="tag tag-fix">修复</span></li>
+        </ul>
+    </div>
+
+    <div class="phase">
+        <div class="phase-header"><div class="num">2</div><div class="phase-title">配色方案</div></div>
+        <p class="desc">已在 ColorScheme.html 中提供4个方案，需您选择后实施。候选：A.深空灰 / B.暗夜翠 / C.午夜琥珀 / D.极光紫</p>
+        <ul>
+            <li>等待配色选择确认 <span class="tag tag-ui">UI</span></li>
+            <li>全局QSS样式表应用到MainWindow及所有子控件 <span class="tag tag-ui">UI</span></li>
+        </ul>
+        <div class="note">请先查看 <a href="ColorScheme.html" style="color:var(--green)">ColorScheme.html</a> 选择配色方案，确认计划时注明方案编号（A/B/C/D）。</div>
+    </div>
+
+    <div class="phase">
+        <div class="phase-header"><div class="num">3</div><div class="phase-title">接收区→日志区重构</div></div>
+        <p class="desc">接收区改为日志区，记录所有收发数据；发送数据带[TX]前缀+毫秒时间戳</p>
+        <ul>
+            <li>UI标题"接收区"改为"日志区" <span class="tag tag-ui">UI</span></li>
+            <li>接收数据：添加时间戳前缀(精确到毫秒)，格式 [RX] 和时间 <span class="tag tag-ui">UI</span></li>
+            <li>发送数据：写入日志区，带 [TX] 前缀+毫秒时间戳 <span class="tag tag-ui">UI</span></li>
+            <li>时间戳格式：HH:mm:ss.zzz <span class="tag tag-ui">UI</span></li>
+            <li>日志区颜色区分：[TX]行用强调色，[RX]行用普通色 <span class="tag tag-ui">UI</span></li>
+        </ul>
+    </div>
+
+    <div class="phase">
+        <div class="phase-header"><div class="num">4</div><div class="phase-title">编译验证 & 报告</div></div>
+        <ul>
+            <li>编译验证零错误零警告</li>
+            <li>同步备份+变更日志</li>
+            <li>生成Report.html</li>
+        </ul>
+    </div>
+</div>
+</body>
+</html>

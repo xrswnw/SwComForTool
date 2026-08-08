@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ComforTool Round006 实施报告</title>
+<style>
+  :root { --purple: #7830b0; --green: #50a050; --pink: #c050a0; --bg: #f0eaf8; --text: #503070; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; padding: 20px; }
+  h1 { text-align: center; color: var(--purple); font-size: 1.8em; margin-bottom: 8px; }
+  .ver { text-align: center; color: #8870a8; font-size: 0.9em; margin-bottom: 24px; }
+  h2 { color: var(--purple); border-bottom: 2px solid #c8b8e0; padding-bottom: 6px; margin: 28px 0 14px; font-size: 1.3em; }
+  .card { background: #fff; border: 1px solid #d8d0e8; border-radius: 8px; padding: 16px 20px; margin: 10px 0; }
+  .card-title { font-weight: bold; color: var(--purple); margin-bottom: 6px; }
+  .ok { color: var(--green); font-weight: bold; }
+  .fail { color: var(--pink); font-weight: bold; }
+  ul { padding-left: 20px; }
+  li { margin: 3px 0; }
+  code { background: #e8e0f4; padding: 1px 5px; border-radius: 3px; font-size: 0.9em; font-family: Menlo, monospace; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th { background: #e0d4f0; color: var(--purple); padding: 8px 12px; text-align: left; font-size: 0.9em; }
+  td { padding: 6px 12px; border-bottom: 1px solid #e8e0f4; font-size: 0.9em; }
+  .note { background: #fff8e0; border: 1px solid #e0d080; border-radius: 5px; padding: 10px 14px; margin: 10px 0; font-size: 0.9em; }
+</style>
+</head>
+<body>
+
+<h1>ComforTool Round006 实施报告</h1>
+<div class="ver">V1.1 &middot; 2026-05-29 &middot; 完成</div>
+
+<h2>一、执行结果总览</h2>
+
+<table>
+  <thead><tr><th>需求</th><th>内容</th><th>状态</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>发送区定时发送</td><td class="ok">完成</td></tr>
+    <tr><td>2</td><td>串口状态联动锁定 + 版本框居中</td><td class="ok">完成</td></tr>
+    <tr><td>3</td><td>版本信息指示 (ComforToolV1.1)</td><td class="ok">完成</td></tr>
+    <tr><td>4</td><td>通信调试按钮</td><td class="ok">完成</td></tr>
+    <tr><td>5</td><td>通信调试面板 (组帧+填入发送区)</td><td class="ok">完成</td></tr>
+    <tr><td>6</td><td>issue/ 打包脚本</td><td class="ok">完成</td></tr>
+    <tr><td>8</td><td>程序图标</td><td class="ok">完成</td></tr>
+    <tr><td>9</td><td>日志区优化 (去除帧含义, 超时提示保留)</td><td class="ok">完成</td></tr>
+    <tr><td>10</td><td>Windows打包方案</td><td class="ok">完成 (pack.bat + 文档)</td></tr>
+    <tr><td>11</td><td>Plan渲染UI</td><td class="ok">完成</td></tr>
+    <tr><td>追加1</td><td>功能栏左侧双列布局</td><td class="ok">完成</td></tr>
+    <tr><td>追加2</td><td>通信调试面板独立展开</td><td class="ok">完成</td></tr>
+  </tbody>
+</table>
+
+<h2>二、文件变更清单</h2>
+
+<table>
+  <thead><tr><th>文件</th><th>变更类型</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td><code>CMakeLists.txt</code></td><td>修改</td><td>VERSION 1.0.0→1.1.0, configure_file, 资源文件, 图标配置</td></tr>
+    <tr><td><code>src/Version.h.in</code></td><td>新增</td><td>版本号模板, CMake生成Version.h</td></tr>
+    <tr><td><code>src/main.cpp</code></td><td>修改</td><td>include Version.h, setApplicationVersion</td></tr>
+    <tr><td><code>src/MainWindow.h</code></td><td>重写</td><td>新增debugBtn, debugPanel, timerSend*, versionLabel等成员</td></tr>
+    <tr><td><code>src/MainWindow.cpp</code></td><td>重写</td><td>功能栏双列布局, 通信调试面板, 定时发送, 联动锁定, 日志优化</td></tr>
+    <tr><td><code>res/icon.svg</code></td><td>新增</td><td>紫色C字母矢量图标</td></tr>
+    <tr><td><code>res/icon.png</code></td><td>新增</td><td>256x256 PNG图标</td></tr>
+    <tr><td><code>res/icon.ico</code></td><td>新增</td><td>多尺寸ICO (16/32/48/256)</td></tr>
+    <tr><td><code>res/res.qrc</code></td><td>新增</td><td>Qt资源文件</td></tr>
+    <tr><td><code>issue/pack.sh</code></td><td>新增</td><td>macOS打包脚本</td></tr>
+    <tr><td><code>issue/pack.bat</code></td><td>新增</td><td>Windows打包脚本</td></tr>
+    <tr><td><code>Agent/Round006/Plan.html</code></td><td>新增</td><td>实施计划 (含UI渲染)</td></tr>
+  </tbody>
+</table>
+
+<h2>三、编译验证</h2>
+
+<div class="card">
+  <div class="card-title">macOS 编译结果</div>
+  <ul>
+    <li>编译器: AppleClang 17.0.0</li>
+    <li>Qt版本: 6.8.3 (项目内aqtinstall)</li>
+    <li>结果: <span class="ok">编译通过，0错误0警告</span></li>
+  </ul>
+</div>
+
+<h2>四、备份记录</h2>
+
+<div class="card">
+  <div class="card-title">备份路径</div>
+  <ul>
+    <li>备份目录: <code>/Users/swnw/Documents/BackupArea/ComforTool</code></li>
+    <li>变更日志: <code>BackupArea/ComforTool/ChangeLog/Round006_*.md</code></li>
+    <li>全量备份于执行前完成，增量同步于执行后完成</li>
+  </ul>
+</div>
+
+<h2>五、遗留说明</h2>
+
+<div class="note">Windows exe打包需要在Windows 10/11物理机(或VM)上执行pack.bat，macOS无法直接交叉编译生成Win exe。Plan.html需求10中有完整步骤说明。</div>
+<div class="note">程序图标为程序化生成的简单字母C图标，如需更精致的图标可后续替换 res/icon.svg 为主源重新导出。</div>
+
+</body>
+</html>

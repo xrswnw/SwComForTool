@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ComforTool - Round002 执行计划</title>
+    <style>
+        :root {
+            --bg: #1a1a2e;
+            --card-bg: #16213e;
+            --accent: #0f3460;
+            --highlight: #e94560;
+            --text: #eee;
+            --text-dim: #aaa;
+            --green: #4ecca3;
+            --blue: #6c9bff;
+            --border: #2a2a4a;
+            --yellow: #eab308;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); line-height: 1.8; padding: 40px 20px; }
+        .container { max-width: 960px; margin: 0 auto; }
+        h1 { text-align: center; font-size: 2em; margin-bottom: 6px; color: var(--green); }
+        .subtitle { text-align: center; color: var(--text-dim); margin-bottom: 36px; font-size: 0.95em; }
+        .phase { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 24px 28px; margin-bottom: 20px; }
+        .phase-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+        .phase-num { background: var(--highlight); color: white; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0; }
+        .phase-title { font-size: 1.25em; font-weight: 600; color: var(--green); }
+        .desc { color: var(--text-dim); margin-bottom: 12px; font-size: 0.93em; }
+        .task-list { list-style: none; padding: 0; }
+        .task-list li { padding: 7px 0 7px 28px; position: relative; border-bottom: 1px solid rgba(255,255,255,0.04); }
+        .task-list li:last-child { border-bottom: none; }
+        .task-list li::before { content: "☐"; position: absolute; left: 0; color: var(--highlight); }
+        .tag { display: inline-block; font-size: 0.72em; padding: 2px 8px; border-radius: 4px; margin-left: 8px; vertical-align: middle; }
+        .tag-ui { background: rgba(108,155,255,0.15); color: var(--blue); }
+        .tag-qt { background: rgba(78,204,163,0.15); color: var(--green); }
+        .tag-cross { background: rgba(234,179,8,0.15); color: var(--yellow); }
+        .tag-refactor { background: rgba(233,69,96,0.15); color: var(--highlight); }
+        .note { background: rgba(233,69,96,0.08); border-left: 3px solid var(--highlight); padding: 10px 14px; border-radius: 0 8px 8px 0; margin-top: 14px; font-size: 0.88em; color: var(--text-dim); }
+        .warn { background: rgba(234,179,8,0.08); border-left: 3px solid var(--yellow); padding: 10px 14px; border-radius: 0 8px 8px 0; margin-top: 14px; font-size: 0.88em; color: var(--yellow); }
+        .preview { background: rgba(0,0,0,0.25); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-top: 14px; font-family: "SF Mono", monospace; font-size: 0.78em; line-height: 1.5; color: var(--text-dim); white-space: pre; overflow-x: auto; }
+        .preview .label { color: var(--highlight); font-weight: 600; }
+        .preview .comp { color: var(--blue); }
+        .preview .border { color: #555; }
+        .preview .spacer { color: #444; }
+        .section-divider { text-align: center; margin: 32px 0; color: var(--border); font-size: 1.5em; letter-spacing: 12px; }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <h1>ComforTool - Round002 执行计划</h1>
+    <p class="subtitle">界面重构 · 握手栏+功能栏+日志栏三层布局 · Win10兼容</p>
+
+    <!-- ===== 阶段 1 ===== -->
+    <div class="phase">
+        <div class="phase-header">
+            <div class="phase-num">1</div>
+            <div class="phase-title">MainWindow 重构为三层布局</div>
+        </div>
+        <p class="desc">按照新需求重构界面：MainPage 1280×960，顶部握手栏、中部功能栏（预留）、底部日志栏。</p>
+        <ul class="task-list">
+            <li>窗口初始大小改为 1280×960，用户可调整 <span class="tag tag-ui">UI</span></li>
+            <li>窗口标题改为 "ComforTool" <span class="tag tag-ui">UI</span></li>
+            <li>重构 setupUI()：移除现有布局，改为三层垂直布局 <span class="tag tag-refactor">重构</span></li>
+            <li>握栏：水平排列 Com口选择 → 波特率 → 数据位 → 停止位 → 校验 → 握手按钮 <span class="tag tag-ui">UI</span></li>
+            <li>功能栏：添加预留区域 QGroupBox，暂放置占位提示 <span class="tag tag-ui">UI</span></li>
+            <li>日志栏：分为接收区上方 + 发送区下方，保留原有串口助手功能 <span class="tag tag-ui">UI</span></li>
+        </ul>
+        <div class="note">握手按钮与原"打开/关闭"按钮合并：点击握手=打开串口，再次点击=关闭。串口选择改为固定Com口（下拉框仅显示cu.usbserial/com口设备）。</div>
+    </div>
+
+    <!-- ===== 界面预览 ===== -->
+    <div class="phase">
+        <div class="phase-header">
+            <div class="phase-num">▸</div>
+            <div class="phase-title">目标界面布局</div>
+        </div>
+        <div class="preview">
+<span class="border">┌─────────────────────────────────────────────────────────────────────────────────────┐</span>
+<span class="border">│</span> <span class="label">ComforTool</span>                                                                              <span class="border">│</span>
+<span class="border">├─────────────────────────────────────────────────────────────────────────────────────┤</span>
+<span class="border">│</span> <span class="label">【握手栏】</span>  <span class="comp">[通信接口: COM▼]</span>  <span class="comp">[波特率: 115200▼]</span>  <span class="comp">[数据位:8▼]</span>  <span class="comp">[停止位:1▼]</span>  <span class="comp">[校验:无▼]</span>  <span class="comp">[握 手]</span>  <span class="border">│</span>
+<span class="border">├─────────────────────────────────────────────────────────────────────────────────────┤</span>
+<span class="border">│</span> <span class="label">【功能栏】</span> <span style="color:#666">（预留区域，后续功能模块将在此展开）</span>                                              <span class="border">│</span>
+<span class="border">├─────────────────────────────────────────────────────────────────────────────────────┤</span>
+<span class="border">│</span> <span class="label">【日志栏 - 接收区】</span>                                                                     <span class="border">│</span>
+<span class="border">│</span>  ☐Hex显示  [清空]                                                                        <span class="border">│</span>
+<span class="border">│</span> ┌─────────────────────────────────────────────────────────────────────────────────┐ <span class="border">│</span>
+<span class="border">│</span> │  (串口接收数据实时显示区)                                                        │ <span class="border">│</span>
+<span class="border">│</span> └─────────────────────────────────────────────────────────────────────────────────┘ <span class="border">│</span>
+<span class="border">│</span> <span class="label">【日志栏 - 发送区】</span>                                                                     <span class="border">│</span>
+<span class="border">│</span>  ☐Hex发送  [发送]                                                                        <span class="border">│</span>
+<span class="border">│</span> ┌─────────────────────────────────────────────────────────────────────────────────┐ <span class="border">│</span>
+<span class="border">│</span> │  (串口发送数据输入区)                                                            │ <span class="border">│</span>
+<span class="border">│</span> └─────────────────────────────────────────────────────────────────────────────────┘ <span class="border">│</span>
+<span class="border">└─────────────────────────────────────────────────────────────────────────────────────┘</span>
+        </div>
+    </div>
+
+    <!-- ===== 阶段 2 ===== -->
+    <div class="phase">
+        <div class="phase-header">
+            <div class="phase-num">2</div>
+            <div class="phase-title">串口选择优化 - 固定Com口</div>
+        </div>
+        <p class="desc">串口枚举过滤：仅显示COM风格的串口设备（如cu.usbserial-*），握手按钮替代原打开/关闭按钮。</p>
+        <ul class="task-list">
+            <li>refreshPorts() 过滤仅显示 usbserial / cu.usbmodem 等COM口设备 <span class="tag tag-qt">Qt</span></li>
+            <li>握手按钮：未连接时显示"握手"（点击打开串口），已连接时显示"断开"（点击关闭） <span class="tag tag-ui">UI</span></li>
+            <li>移除原有"刷新"按钮（串口列表在窗口初始化时自动枚举，用户也可手动刷新） <span class="tag tag-refactor">重构</span></li>
+        </ul>
+    </div>
+
+    <!-- ===== 阶段 3 ===== -->
+    <div class="phase">
+        <div class="phase-header">
+            <div class="phase-num">3</div>
+            <div class="phase-title">Win10 兼容方案</div>
+        </div>
+        <p class="desc">确保代码在 Win10 上可编译运行，CMake 配置跨平台兼容。</p>
+        <ul class="task-list">
+            <li>CMakeLists.txt 添加跨平台处理：Windows 下自动链接 Qt6Widgets/SerialPort（无需手动设置前缀） <span class="tag tag-cross">跨平台</span></li>
+            <li>CMAKE_PREFIX_PATH 改为条件判断：仅在非Windows且本地Qt存在时设置 <span class="tag tag-cross">跨平台</span></li>
+            <li>串口名称跨平台处理：macOS 用 cu.usbserial*，Windows 用 COM* <span class="tag tag-cross">跨平台</span></li>
+            <li>串口枚举过滤逻辑按平台分支 <span class="tag tag-cross">跨平台</span></li>
+        </ul>
+        <div class="warn">当前无需在Win10上实际编译，仅确保代码和构建脚本兼容。Win10 实际编译需在 Windows 环境下安装 Qt6 和 MSVC 后执行。</div>
+    </div>
+
+    <!-- ===== 阶段 4 ===== -->
+    <div class="phase">
+        <div class="phase-header">
+            <div class="phase-num">4</div>
+            <div class="phase-title">编译验证 & 报告</div>
+        </div>
+        <ul class="task-list">
+            <li>完整编译，确保零错误零警告 <span class="tag tag-qt">Qt</span></li>
+            <li>同步备份，记录变更日志 <span class="tag tag-qt">Qt</span></li>
+            <li>生成 Report.html <span class="tag tag-qt">Qt</span></li>
+        </ul>
+    </div>
+
+    <div class="section-divider">◆ ◆ ◆</div>
+
+    <!-- ===== 改动范围 ===== -->
+    <div class="phase">
+        <div class="phase-header">
+            <div class="phase-num">▸</div>
+            <div class="phase-title">改动文件范围</div>
+        </div>
+        <table style="width:100%; border-collapse:collapse; font-size:0.9em;">
+            <thead><tr style="color:var(--text-dim); border-bottom:1px solid var(--border);"><th style="padding:6px;">文件</th><th style="padding:6px;">改动类型</th><th style="padding:6px;">说明</th></tr></thead>
+            <tbody>
+                <tr><td style="padding:6px;">src/MainWindow.h</td><td style="padding:6px;">修改</td><td style="padding:6px;">新增功能栏成员变量，握手按钮替换toggleBtn</td></tr>
+                <tr><td style="padding:6px;">src/MainWindow.cpp</td><td style="padding:6px;">重写</td><td style="padding:6px;">三层布局重构，串口过滤，握手按钮逻辑，跨平台兼容</td></tr>
+                <tr><td style="padding:6px;">CMakeLists.txt</td><td style="padding:6px;">修改</td><td style="padding:6px;">跨平台 CMAKE_PREFIX_PATH 条件判断</td></tr>
+                <tr><td style="padding:6px;">src/SerialPortManager.*</td><td style="padding:6px;">不变</td><td style="padding:6px;">已有功能满足需求，无需修改</td></tr>
+                <tr><td style="padding:6px;">src/main.cpp</td><td style="padding:6px;">微调</td><td style="padding:6px;">窗口标题统一</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+</div>
+</body>
+</html>
