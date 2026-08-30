@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Round026 报告 — 重构 ZLR5401 电机 Tab 分区布局</title>
+<style>
+  body { font-family:"PingFang SC","Microsoft YaHei",sans-serif; max-width:1120px; margin:0 auto; padding:24px 32px; color:#2a2438; line-height:1.75; background:#faf8fc; }
+  h1 { color:#5a3a8a; border-bottom:3px solid #b8a0d8; padding-bottom:8px; }
+  h2 { color:#6a4a9a; margin-top:30px; border-left:5px solid #b8a0d8; padding-left:10px; }
+  code { background:#ede6f4; padding:1px 6px; border-radius:4px; font-family:"JetBrains Mono",Consolas,monospace; font-size:0.9em; }
+  pre { background:#1e1a2e; color:#e0d8f0; padding:14px 18px; border-radius:8px; overflow-x:auto; font-size:0.83em; line-height:1.5; }
+  table { border-collapse:collapse; width:100%; margin:10px 0; }
+  th,td { border:1px solid #c8b8e0; padding:7px 11px; text-align:left; vertical-align:top; }
+  th { background:#d8c8f0; color:#4a2a7a; }
+  tr:nth-child(even){ background:#f0eaf8; }
+  .ok { color:#2a8030; font-weight:bold; }
+  .box { border:1px solid #c8b8e0; border-radius:8px; padding:10px 16px; margin:12px 0; background:#fff; }
+  .box.ok { border-color:#a0d8a0; background:#f5fff5; }
+  ul { margin:6px 0; padding-left:22px; } li { margin:3px 0; }
+  .small { color:#706080; font-size:0.88em; }
+</style>
+</head>
+<body>
+
+<h1>Round026 报告 — 重构 ZLR5401 电机 Tab 分区布局</h1>
+<p class="small">需求：<code>Agent/Round026/Demand.md</code> &nbsp;|&nbsp; 计划：<code>Agent/Round026/Plan.html</code> &nbsp;|&nbsp; 执行时间：2026-08-27 &nbsp;|&nbsp; 状态：<b>已执行并通过编译+冒烟（含 v2 等分调整）</b></p>
+
+<div class="box ok">
+<b>总评（含 v2 等分调整 + v3 全 Tab 统一）</b>
+<ul>
+<li><b>v2</b>：电机 Tab 两行等分（第一行速度/转矩/其他 三等分、第二行控制/行程测试 二等分），状态输入框移除。</li>
+<li><b>v3 追加</b>：<b>UHF / AM / 开锁器 / RGB</b> 四个 Tab 统一改为与电机一致的<b>带边框等分布局</b>（GroupBox 分区 + 底部输出区）。</li>
+<li><b>纯 UI 布局重构</b>，协议帧/槽逻辑/接口零改动，Win 端不受影响。</li>
+</ul>
+</div>
+
+<h2>一、需求落实对照</h2>
+<table>
+<tr><th>需求</th><th>实现</th></tr>
+<tr><td>1 速度区：速度+每转微步上下、设速度在下、边框"速度"</td><td class="ok">✅ 速度区 GroupBox("速度")：速度spin / 每转微步spin 上下排列，下方"设速度"按钮</td></tr>
+<tr><td>2 转矩区：速度右侧、边框"转矩"</td><td class="ok">✅ 转矩区 GroupBox("转矩")：转矩spin + "设转矩"</td></tr>
+<tr><td>3 控制区：右侧框，角度第一行 + 正转/停止/反转第二行，颜色区分</td><td class="ok">✅ 控制区 GroupBox("控制")：角度spin 第一行；正转/停止/反转 第二行。<b>停止用警示橙</b>，正反转主操作红</td></tr>
+<tr><td>4 状态区：输入框渲染 + 获取按钮</td><td class="ok">✅ 状态区 GroupBox("状态")：`m_zlrMotorStateEdit`(只读输入框) + "获取"按钮；onMotorQuery 渲染进输入框</td></tr>
+<tr><td>5 故障清除/健康/统计/行程测试 分区</td><td class="ok">✅ 工具行 4 个 GroupBox：故障清除 / 行程测试(次数+按钮) / 健康 / 统计</td></tr>
+</table>
+
+<h2>二、最终布局（v2 等分）</h2>
+<pre>
+第一行 (三等分):          ┌─ 速度 ────┐ ┌─ 转矩 ───┐ ┌─ 其他 ─────┐
+                          │ 速度(微步/s)│ │ 转矩(%)   │ │ 获取       │
+                          │ [spin]     │ │ [spin]    │ │ 健康       │
+                          │ 每转微步    │ │ [设转矩]  │ │ 统计       │
+                          │ [spin]     │ └──────────┘ │ 清除故障   │
+                          │ [设速度]   │              └────────────┘
+                          └───────────┘
+第二行 (二等分):          ┌─ 控制 ──────────┐ ┌─ 行程测试 ─────┐
+                          │ 角度(°):[spin]  │ │ 次数:[spin]    │
+                          │ 正转 停止 反转  │ │ [行程测试]     │
+                          └─────────────────┘ └────────────────┘
+底部:                     ────── 输出区 (QUERY/HEALTH/STATS 详情) ──────
+</pre>
+
+<h2>三、v3 追加：UHF / AM / 开锁器 / RGB 统一等分布局</h2>
+<table>
+<tr><th>Tab</th><th>第一行分区</th><th>底部</th></tr>
+<tr><td><b>UHF</b></td><td>配置区(功率/频段/EPC/Bank/Addr/Cnt/数据 + 读写配置) ｜ 控制区(开启/关闭/盘点/查询/取标签/读状态/天线检测)；第二行 扫描区(周期/自动扫描/停扫/诊断) ｜ 读写区(读/写标签)</td><td>标签表格 + 输出区</td></tr>
+<tr><td><b>AM</b></td><td>配置区(10 项参数网格 + 读写配置) ｜ 监控区(查询/监控状态/切模式 + 波形采集/取页)</td><td>波形区 + 输出区</td></tr>
+<tr><td><b>开锁器</b></td><td>清单区(软标总数/硬标EPC + 配置清单/追加硬标) ｜ 操作区(开始/取消/查询/取事件)</td><td>输出区</td></tr>
+<tr><td><b>RGB</b></td><td>颜色区(绿/红/蓝勾选 + 组合提示) ｜ 控制区(下发/全灭 + 上次 mask)</td><td>—</td></tr>
+</table>
+<p class="small">全部用 <code>zlrMotorGroup</code> 边框样式，与电机分区统一视觉。修复了 RGB <code>m_zlrRgbOutLabel</code> 未赋成员导致"上次 mask"不刷新的潜在 bug。</p>
+
+<h2>四、改动清单</h2>
+<table>
+<tr><th>文件</th><th>改动</th></tr>
+<tr><td><code>src/MainWindow.h</code></td><td>新增 <code>m_zlrMotorStateBtn</code>(获取按钮)；移除不再使用的 <code>m_zlrMotorQueryBtn</code> 与状态输入框 <code>m_zlrMotorStateEdit</code>。</td></tr>
+<tr><td><code>src/MainWindow.cpp</code></td><td>①重写电机 Tab setupUI 为分区布局（v2：第一行速度/转矩/其他三等分、第二行控制/行程测试二等分）；②"其他"区组建获取/健康/统计/清除故障；③<code>onMotorQuery</code> 渲染到输出区（状态框移除）；④样式表加 停止警示色、电机分组框样式。</td></tr>
+</table>
+<p class="small">协议帧构造/发送/槽签名均未改，仅布局与渲染目标变化。Win 端零影响。</p>
+
+<h2>五、验证</h2>
+<pre>
+--- Mac 编译 ---
+[100%] Built target SwComForTool      <span class="ok">零错误 零警告</span>
+--- 冒烟启动 (offscreen) ---
+启动 5s 进程存活, 无崩溃 (电机分区布局构造正常)  <span class="ok">PASS</span>
+--- 自包含打包 ---
+rpath=@executable_path/../Frameworks  <span class="ok">可移植</span>
+codesign --verify --deep --strict 通过  <span class="ok">SIGN_OK</span>
+产物: issue/Mac_Arm64/SwComForTool.app + issue/SwComForToolV1.1.0_macOS.zip (62M)
+</pre>
+
+<h2>六、备份</h2>
+<ul>
+<li>变更前全量快照：<code>/Volumes/Record/Person Code/BackupArea/ComforTool/Round_110_20260827_095452</code>（340M ≤500M OK，轮转删除 Round_078）</li>
+<li>本轮无文件删除，TrashCan 不新增。</li>
+</ul>
+
+<hr>
+<div class="box ok">
+<b>结论</b>：电机 Tab 已重构为 7 分区带边框布局，完全按 5 点需求落实；停止警示色、状态区渲染均已实现。编译零错误零警告、冒烟无崩溃、V1.1.0 已打包。Round026 完成，待审查。
+</div>
+
+</body>
+</html>

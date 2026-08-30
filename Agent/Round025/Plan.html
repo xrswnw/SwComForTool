@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Round025 计划 — 新增 ZLR5401 扩展区（电机控制）</title>
+<style>
+  body { font-family:"PingFang SC","Microsoft YaHei",sans-serif; max-width:1120px; margin:0 auto; padding:24px 32px; color:#2a2438; line-height:1.75; background:#faf8fc; }
+  h1 { color:#5a3a8a; border-bottom:3px solid #b8a0d8; padding-bottom:8px; }
+  h2 { color:#6a4a9a; margin-top:30px; border-left:5px solid #b8a0d8; padding-left:10px; }
+  h3 { color:#7a5aaa; margin-top:18px; }
+  code { background:#ede6f4; padding:1px 6px; border-radius:4px; font-family:"JetBrains Mono",Consolas,monospace; font-size:0.9em; }
+  pre { background:#1e1a2e; color:#e0d8f0; padding:14px 18px; border-radius:8px; overflow-x:auto; font-size:0.83em; line-height:1.5; }
+  table { border-collapse:collapse; width:100%; margin:10px 0; }
+  th,td { border:1px solid #c8b8e0; padding:7px 11px; text-align:left; vertical-align:top; }
+  th { background:#d8c8f0; color:#4a2a7a; }
+  tr:nth-child(even){ background:#f0eaf8; }
+  .ok { color:#2a8030; font-weight:bold; }
+  .warn { color:#c07020; font-weight:bold; }
+  .bad { color:#c03030; font-weight:bold; }
+  .box { border:1px solid #c8b8e0; border-radius:8px; padding:10px 16px; margin:12px 0; background:#fff; }
+  .box.ok { border-color:#a0d8a0; background:#f5fff5; }
+  .box.warn { border-color:#e0c090; background:#fffaf2; }
+  .feature { border:1px solid #c8b8e0; border-radius:8px; padding:12px 16px; margin:12px 0; background:#fff; }
+  .feature b { color:#5a3a8a; }
+  .tag { display:inline-block; padding:1px 8px; border-radius:10px; font-size:0.76em; font-weight:bold; margin-left:6px; }
+  .tag-new { background:#fde8c8; color:#a06020; }
+  .tag-mac { background:#e8e0f4; color:#6040a0; }
+  ul { margin:6px 0; padding-left:22px; } li { margin:3px 0; }
+  .small { color:#706080; font-size:0.88em; }
+  .hr { border:0; border-top:2px dashed #c8b8e0; margin:26px 0; }
+  .step { background:#f6f2fb; border-left:4px solid #8a6ab0; padding:8px 14px; margin:10px 0; border-radius:0 6px 6px 0; }
+  .step b { color:#5a3a8a; }
+</style>
+</head>
+<body>
+
+<h1>Round025 计划 — 新增 ZLR5401 扩展区（电机控制）</h1>
+<p class="small">需求：<code>Agent/Round025/Demand.md</code> &nbsp;|&nbsp; 协议：<code>/Users/swnw/Documents/Software/ZLR5401/Protocol/App_Protocol.html</code> &nbsp;|&nbsp; 状态：<b>等待确认，计划不执行</b></p>
+
+<div class="box">
+<b>需求复述</b>
+<ul>
+<li>在 <b>SCCD 下方</b>增加一个按钮 <b>ZLR5401</b>，展开一个 ZLR5401 扩展界面，<b>照 SCCD 效果</b>（可勾选按钮 → 展开/收起区域）。</li>
+<li>参照 ZLR5401 协议（App_Protocol.html），<b>设定按钮、输入</b>，例如<b>电机旋转角度、正转/反转控制</b>等。</li>
+<li>功能上：类似目前 SCCD 的效果。</li>
+</ul>
+</div>
+
+<h2>一、现状调查结论</h2>
+
+<div class="box ok">
+<b>1. SCCD 的 UI 结构（参照模板，已确认可复刻）</b>
+<table>
+<tr><th>层级</th><th>实现</th><th>位置</th></tr>
+<tr><td>顶部按钮</td><td><code>m_sccdBtn</code> 可勾选(紫色, active 绿) 放 <code>Supported Devices</code> 边框</td><td>setupUI L292</td></tr>
+<tr><td>展开容器</td><td><code>m_sccdBox</code> QGroupBox("Sccd Area") 默认隐藏, toggle 显隐</td><td>setupUI L392</td></tr>
+<tr><td>内部</td><td>协议按钮行 + 射频控制 + <code>QTabWidget</code>(15693/14443A/14443B)</td><td>setupUI L399-788</td></tr>
+<tr><td>开关逻辑</td><td><code>onSccdToggle</code> 显隐 + 按钮底色</td><td>L1543</td></tr>
+<tr><td>生命周期</td><td><code>enableFuncButtons</code>(握手后启用) + <code>resetUiToInitialState</code>(断开收起)</td><td>L2739/L2766</td></tr>
+</table>
+</div>
+
+<div class="box ok">
+<b>2. ZLR5401 协议中"电机控制"命令可用（FC=0x0A，步进电机 DRV8434S）</b>
+<p>需求点名"电机旋转角度正转反转控制"，协议 §10 提供完整 6 个子命令，<b>正好对应</b>：</p>
+<table>
+<tr><th>cmd</th><th>名称</th><th>Host→Device (data)</th><th>说明</th></tr>
+<tr><td>0x01</td><td>MOVE 运动</td><td><code>[cmd, dir, stepsL,stepsM,stepsH]</code></td><td><b>dir=0 正转(CW) / 1 反转(CCW)</b>；steps=24bit 微步数，<b>0=持续运行</b></td></tr>
+<tr><td>0x02</td><td>STOP</td><td>[cmd]</td><td>停止并关断输出</td></tr>
+<tr><td>0x03</td><td>SPEED</td><td>[cmd, hzL, hzH]</td><td>设定微步/秒 (1~2000)</td></tr>
+<tr><td>0x04</td><td>TORQUE</td><td>[cmd, pct]</td><td>转矩百分比 (6~100)</td></tr>
+<tr><td>0x05</td><td>QUERY</td><td>[cmd]</td><td>查询 state/fault/stepsDone</td></tr>
+<tr><td>0x06</td><td>CLEAR</td><td>[cmd]</td><td>清故障回 IDLE</td></tr>
+</table>
+<p class="small">响应：func = 请求^0xFF(0x0A→0xF5)，data[0]=cmd，data[1]=err(0=OK)。协议另含 UHF(0x0B)/AM(0x0C)/开锁器(0x0D)，本轮聚焦电机（需求点名），其余作为后续可选（见第三节范围说明）。</p>
+</div>
+
+<h2>二、方案设计</h2>
+
+<h3>2.1 核心思路</h3>
+<div class="box">
+<p>完全对齐 SACCD 的交互范式，新增一个 <b>ZLR5401 Area</b>：</p>
+<pre>
+Supported Devices 边框
+   └─ Sccd   (既有)
+   └─ ZLR5401 (新增, 可勾选紫/绿)   --toggle-->  ZLR5401 Area (QGroupBox, 默认隐藏)
+                                                        └─ TabWidget
+                                                             └─ "电机控制" Tab
+                                                                   └─ 正转/反转 + 角度 / 速度 / 转矩 / 持续 / 停止 / 查询 / 清错
+</pre>
+<p>所有内容用协议 FC=0x0A 封装发出，复用现有 <code>m_parser->makeFrame()</code> 与日志/收发链路，<b>不改 ITransport / ProtocolParser 接口</b>（D1 满足）。</p>
+</div>
+
+<h3>2.2 电机控制 Tab 布局（本次新增）</h3>
+<div class="feature">
+<b>方向按钮</b>：<code>正转(CW)</code> / <code>反转(CCW)</code> —— 点击即按当前参数发 MOVE（dir=0/1）。<br>
+<b>角度输入</b>：<code>角度(°)</code> QSpinBox（含负值？不，方向由按钮定，角度取 0~360；<b>0°=持续运行</b>，对齐协议 steps=0）。<br>
+<b>微步换算</b>：<code>每转微步数</code> QSpinBox（默认 <b>3200</b> = 200步×16微步，可改，因细分率设备端决定）。换算：<code>steps = round(角度/360 × 每转微步)</code>。<br>
+<b>速度</b>：<code>微步/秒</code> QSpinBox（1~2000，默认 1000）→ MOVE 前先发 SPEED。<br>
+<b>转矩</b>：<code>%</code> QSpinBox（6~100，默认 50）→ MOVE 前先发 TORQUE。（可选，发 TORQUE 仅当启用勾选）<br>
+<b>操作</b>：<code>停止</code> / <code>查询状态</code> / <code>清除故障</code>。<br>
+<b>只读输出</b>：<code>结果</code> 文本框（显示 QUERY 的 state/fault/stepsDone 与各命令 err）。
+</div>
+<p class="small">角度→微步换算为上层便利设计；<b>每转微步数默认 3200 需在确认时核准</b>（协议未给细分值，做成可编辑输入，避免写死错误）。若确认后设备每转微步不同，改默认即可。</p>
+
+<h3>2.3 通用子命令收发 helper（新增）</h3>
+<pre>
+bool sendZlrSubCmd(quint8 fc, quint8 subCmd, const QByteArray &argData,
+                   QByteArray *outPayload, QString *outErrNote);
+// makeFrame(fc, argData 前插 subCmd) → 收 → 校验 func==fc^0xFF → data[0]==subCmd
+//                      → 打印 data[1]=err(0=OK) → outPayload=data.mid(2)
+</pre>
+<p>参照现有 <code>sendRfidAndParse</code> 的写法，新增在 MainWindow.cpp，不触碰 RFID 既有代码。</p>
+
+<h2>三、范围决定（待确认）</h2>
+<div class="box warn">
+<p>协议含 4 个扩展模块：电机(0x0A) / UHF(0x0B) / AM(0x0C) / 开锁器(0x0D)。需求点名"电机旋转角度正反转控制"。建议：</p>
+<ul>
+<li><b>本轮</b>：<b>电机控制 Tab 完整实现</b>（需求明说）。</li>
+<li><b>可选追加</b>：UHF / AM / 开锁器 三个 Tab 是否本轮一并做？<span class="warn">（默认本轮不做，留待后续轮次，避免范围膨胀；若你确认时勾选，则在计划上追加版本区分一并实现）</span></li>
+</ul>
+</div>
+
+<h2>四、修改清单（影响 Win 接口：否）</h2>
+<table>
+<tr><th>#</th><th>文件</th><th>动作</th><th>关键内容</th><th>影响接口</th></tr>
+<tr><td>1</td><td><code>src/MainWindow.h</code></td><td>追加 <span class="tag tag-new">成员/槽</span></td>
+<td>新增 <code>m_zlrBtn</code>(ZLR5401 开关) / <code>m_zlrBox</code> / 电机控件指针；槽 <code>onZlrToggle</code>、<code>onMotorMove(dir)</code>、<code>onMotorStop/Query/Clear/Speed/Torque</code>；helper <code>sendZlrSubCmd</code>。</td><td><span class="ok">否</span></td></tr>
+<tr><td>2</td><td><code>src/MainWindow.cpp</code></td><td>追加 <span class="tag tag-new">实现</span></td>
+<td>setupUI 建 ZLR5401 按钮+Area+电机 Tab；样式表加 <code>#zlrBtn</code> 等；<code>enableFuncButtons</code> 启用 <code>m_zlrBtn</code>；<code>resetUiToInitialState</code> 收起；各槽实现；<code>sendZlrSubCmd</code>。</td><td><span class="ok">否</span></td></tr>
+<tr><td>3</td><td><code>CMakeLists.txt</code></td><td>不动</td><td>无新源文件，无平台分支改动。</td><td><span class="ok">否</span></td></tr>
+</table>
+<p class="small">无平台相关代码 → Mac/Win 共用同一 UI 与逻辑，D1 满足。不改 <code>ITransport</code>/<code>ProtocolParser</code>（仅复用只读接口）。</p>
+
+<h2>五、执行步骤</h2>
+<div class="step"><b>步骤 0｜备份</b>：<code>./backup.sh "Round025: 新增ZLR5401电机控制"</code>。</div>
+<div class="step"><b>步骤 1｜改 MainWindow.h/.cpp</b>：按二、三节新增 ZLR5401 Area（按钮/容器/电机 Tab/逻辑/样式/生命周期）。</div>
+<div class="step"><b>步骤 2｜Mac 编译</b>：<code>cmake --build build</code>，确认零错误零警告。</div>
+<div class="step"><b>步骤 3｜冒烟启动</b>：offscreen 启动 5s 无崩溃，确认 UI 构造正常（无 ZLR5401 设备，真实通信无法本机实测，如实标注）。</div>
+<div class="step"><b>步骤 4｜打包更新</b>：<code>./issue/pack.sh</code> 更新 <code>Mac_Arm64/</code> + zip。版本号按确认结果（见二、三）。</div>
+<div class="step"><b>步骤 5｜生成 Report.html</b>：含改动清单、电机帧样例（正转100°→握手换算→MOVE/SPEED/TORQUE 真帧）、编译/冒烟结果、Win 接口影响核对。</div>
+
+<h2>六、版本号建议（待确认）</h2>
+<div class="box warn">
+<p>上轮把 V1.0.0 定为固定发布版。本轮<b>新增功能</b>，建议升 <b>V1.1.0</b>（<code>CMakeLists.txt</code> L2 <code>project(... VERSION 1.0.0 ...)</code> → <code>1.1.0</code>）。若你希望继续固定 V1.0.0 则保持。打包脚本已支持三段版本自动提取。</p>
+</div>
+
+<h2>七、风险与回滚</h2>
+<ul>
+<li><b>每转微步数默认值</b> 3200 为推定，接真实设备后若不符改默认值即可（做成可编辑输入，不写死）。</li>
+<li><b>真实通信</b>：ZLR5401 设备不在本机，只能编译+冒烟；帧格式按协议构造（可信），待接设备实测。报告中如实标注。</li>
+<li><b>回滚</b>：改动集中在 MainWindow.cpp/.h，从步骤0备份全量恢复；无删除操作。</li>
+</ul>
+
+<h2>八、交付物</h2>
+<ul>
+<li>计划：<code>Agent/Round025/Plan.html</code>（本文件）&nbsp;|&nbsp; 报告：<code>Agent/Round025/Report.html</code></li>
+<li>源码改动：<code>src/MainWindow.h</code> / <code>src/MainWindow.cpp</code>（+可选 CMakeLists 版本号）</li>
+<li>产物更新：<code>issue/Mac_Arm64/SwComForTool.app</code> + <code>issue/SwComForToolV1.1.0_macOS.zip</code></li>
+</ul>
+
+<hr class="hr">
+<div class="box ok">
+<b>计划要点</b>：在 SCCD 下方新增 <b>ZLR5401</b> 可勾选按钮 → 展开 <b>ZLR5401 Area</b>（照 SCCD 效果），内含<b>电机控制 Tab</b>：正转/反转 + 角度(换算微步) + 速度 + 转矩 + 持续 + 停止/查询/清错，全部走协议 FC=0x0A。<b>不改接口</b>，Mac/Win 共用。本轮聚焦电机（需求点名）；UHF/AM/开锁器按你的确认决定是否追加。<b>等待确认计划。</b>
+</div>
+
+</body>
+</html>

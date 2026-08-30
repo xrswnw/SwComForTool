@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Round025 报告 — 新增 ZLR5401 扩展区（电机/UHF/AM/开锁器）</title>
+<style>
+  body { font-family:"PingFang SC","Microsoft YaHei",sans-serif; max-width:1120px; margin:0 auto; padding:24px 32px; color:#2a2438; line-height:1.75; background:#faf8fc; }
+  h1 { color:#5a3a8a; border-bottom:3px solid #b8a0d8; padding-bottom:8px; }
+  h2 { color:#6a4a9a; margin-top:30px; border-left:5px solid #b8a0d8; padding-left:10px; }
+  h3 { color:#7a5aaa; margin-top:18px; }
+  code { background:#ede6f4; padding:1px 6px; border-radius:4px; font-family:"JetBrains Mono",Consolas,monospace; font-size:0.9em; }
+  pre { background:#1e1a2e; color:#e0d8f0; padding:14px 18px; border-radius:8px; overflow-x:auto; font-size:0.83em; line-height:1.5; }
+  table { border-collapse:collapse; width:100%; margin:10px 0; }
+  th,td { border:1px solid #c8b8e0; padding:7px 11px; text-align:left; vertical-align:top; }
+  th { background:#d8c8f0; color:#4a2a7a; }
+  tr:nth-child(even){ background:#f0eaf8; }
+  .ok { color:#2a8030; font-weight:bold; }
+  .warn { color:#c07020; font-weight:bold; }
+  .bad { color:#c03030; font-weight:bold; }
+  .box { border:1px solid #c8b8e0; border-radius:8px; padding:10px 16px; margin:12px 0; background:#fff; }
+  .box.ok { border-color:#a0d8a0; background:#f5fff5; }
+  .box.warn { border-color:#e0c090; background:#fffaf2; }
+  .tag { display:inline-block; padding:1px 8px; border-radius:10px; font-size:0.76em; font-weight:bold; margin-left:6px; }
+  .tag-src { background:#fde8c8; color:#a06020; }
+  .tag-new { background:#e8d8f8; color:#6040a0; }
+  ul { margin:6px 0; padding-left:22px; } li { margin:3px 0; }
+  .small { color:#706080; font-size:0.88em; }
+  .hr { border:0; border-top:2px dashed #c8b8e0; margin:26px 0; }
+</style>
+</head>
+<body>
+
+<h1>Round025 报告 — 新增 ZLR5401 扩展区（电机/UHF/AM/开锁器）</h1>
+<p class="small">需求：<code>Agent/Round025/Demand.md</code> &nbsp;|&nbsp; 计划：<code>Agent/Round025/Plan.html</code> &nbsp;|&nbsp; 状态：<b>已执行并通过编译+冒烟验证</b></p>
+
+<div class="box ok">
+<b>总评</b>
+<ul>
+<li>在 <b>SCCD 下方</b>新增 <b>ZLR5401</b> 可勾选按钮，展开 <b>ZLR5401 Area</b>，含 <b>电机 / UHF / AM / 开锁器</b> 四个 Tab——<b>完全参照 SCCD 交互</b>（Supported Devices 按钮 → toggle 显隐容器 → TabWidget）。</li>
+<li><b>原 SCCD 完全未改</b>：SCCD 的按钮/容器/Tab/槽/样式/生命周期代码原样保留，仅在其容器下追加 ZLR5401 按钮。</li>
+<li><b>依据 ZLR5401 协议</b>（<code>App_Protocol.html</code>）：电机走 <code>FC=0x0A</code>、UHF <code>0x0B</code>、AM <code>0x0C</code>、开锁器 <code>0x0D</code>，正/反转 + 角度→微步换算均已实现。</li>
+<li><b>Win 接口零影响</b>：未改 <code>ITransport</code>/<code>ProtocolParser</code>（仅复用 <code>makeFrame</code>），UI 与逻辑跨平台共用；Win 构建脚本未触碰。</li>
+<li>版本号升 <b>V1.1.0</b>（CMakeLists），打包产物 <code>Mac_Arm64</code> + <code>SwComForToolV1.1.0_macOS.zip</code> 已更新。</li>
+</ul>
+</div>
+
+<h2>一、改动清单（2 源码 + 1 版本号）</h2>
+<table>
+<tr><th>#</th><th>文件</th><th>动作</th><th>关键内容</th><th>影响 Win/接口</th></tr>
+<tr><td>1</td><td><code>src/MainWindow.h</code></td><td>追加 <span class="tag tag-src">成员/槽</span></td>
+<td>新增 <code>onZlrToggle</code>、<code>onMotorMove(dir)</code>、5 个电机槽、7 个 UHF 槽、3 个 AM 槽、6 个开锁器槽；<code>sendZlrSubCmd</code> helper；全部 ZLR 控件成员（按钮/SpinBox/LineEdit/TextEdit）。</td><td><span class="ok">否</span></td></tr>
+<tr><td>2</td><td><code>src/MainWindow.cpp</code></td><td>追加 <span class="tag tag-src">实现</span></td>
+<td>①<code>setupUI</code>：Supported Devices 加 <code>ZLR5401</code> 按钮 + 新建 ZLR5401 Area(4 Tab)；②样式表加 <code>#zlrBtn</code>/各 ZLR 按钮；③<code>onZlrToggle</code> 显隐+底色；④各槽实现（帧构造+收发+解析）；⑤<code>enableFuncButtons</code>/<code>resetUiToInitialState</code> 纳入 ZLR5401。</td><td><span class="ok">否</span></td></tr>
+<tr><td>3</td><td><code>CMakeLists.txt</code></td><td>改 <span class="tag tag-new">版本号</span></td>
+<td><code>VERSION 1.0.0 → 1.1.0</code>（仅此一行）。</td><td><span class="ok">否</span></td></tr>
+</table>
+<p class="small">零平台相关代码 → Mac/Win 编译同一套源。未新增源文件。</p>
+
+<h2>二、ZLR5401 协议与 UI 对应（依据 App_Protocol.html）</h2>
+<table>
+<tr><th>Tab</th><th>控件</th><th>协议 (FC/subCmd)</th><th>帧 data</th></tr>
+<tr><td rowspan="7"><b>电机</b><br>0x0A</td>
+<td>正转(CW) / 反转(CCW)</td><td>MOVE 0x01</td><td><code>[01, dir, steps 24bit LE]</code></td></tr>
+<tr><td>角度(°) + 每转微步 → 换算 steps</td><td>—</td><td>steps = round(角度/360 × 每转微步)；<b>0°→持续运行(steps=0)</b></td></tr>
+<tr><td>设速度</td><td>SPEED 0x03</td><td><code>[03, hz 16bit LE]</code></td></tr>
+<tr><td>设转矩</td><td>TORQUE 0x04</td><td><code>[04, pct]</code></td></tr>
+<tr><td>停止</td><td>STOP 0x02</td><td><code>[02]</code></td></tr>
+<tr><td>查询状态</td><td>QUERY 0x05</td><td>解析 state/fault/diag1/diag2/stepsDone</td></tr>
+<tr><td>清除故障</td><td>CLEAR 0x06</td><td><code>[06]</code></td></tr>
+<tr><td rowspan="7"><b>UHF</b><br>0x0B</td>
+<td>开启/关闭</td><td>OPEN 0x01 / CLOSE 0x02</td><td><code>[01]</code> / <code>[02]</code></td></tr>
+<tr><td>盘点</td><td>INVENTORY 0x03</td><td><code>[03]</code></td></tr>
+<tr><td>查询</td><td>QUERY 0x07</td><td>解析 state/link/totalTags</td></tr>
+<tr><td>取标签</td><td>GET_TAGS 0x0A</td><td><code>[0A, count=0]</code> → 解析 EPC/rssi</td></tr>
+<tr><td>功率输入 / 设配置</td><td>SET_CONFIG 0x09</td><td><code>[09, power,ant,crc,session,target,q]</code></td></tr>
+<tr><td>读配置</td><td>GET_CONFIG 0x08</td><td>解析 power/ant/crc/session/target/q</td></tr>
+<tr><td colspan="2">（读/写标签 READ_TAG/WRITE_TAG 留待后续，见第三节）</td><td>—</td></tr>
+<tr><td rowspan="3"><b>AM</b><br>0x0C</td>
+<td>读/写配置</td><td>GET/ SET_CONFIG 0x01/0x02</td><td>九参数(thr/hit/freq/delay/len/invert/sync/volt/mode)，16bit 高字节在前</td></tr>
+<tr><td>查询</td><td>QUERY 0x05</td><td>解析 link</td></tr>
+<tr><td colspan="2">（GET/SET_PARAM 单参数读写留待后续）</td><td>—</td></tr>
+<tr><td rowspan="6"><b>开锁器</b><br>0x0D</td>
+<td>配置清单(软标N)</td><td>CONFIGURE 0x01</td><td><code>[01, hardCnt0,0, softCnt 16bit LE]</code></td></tr>
+<tr><td>追加硬标</td><td>ADD 0x02</td><td><code>[02, epcLen, epc..]</code></td></tr>
+<tr><td>开始/取消</td><td>START 0x03 / CANCEL 0x04</td><td><code>[03]</code> / <code>[04]</code></td></tr>
+<tr><td>查询</td><td>QUERY 0x05</td><td>解析 state/hm/sc/su</td></tr>
+<tr><td>取事件</td><td>GET_EVENT 0x07</td><td>解析 code/EPC/hm/su/sc/hc</td></tr>
+<tr><td colspan="2">（CONSUME_SOFT 0x06 软标消耗留待后续）</td><td>—</td></tr>
+</table>
+
+<h3>帧样例（正转 90°，每转 3200 微步，速度 1000）</h3>
+<pre>
+SPEED:   makeFrame(0x0A, [03, E8 03])  →  53 77 01 00 08 00 0A 03 E8 03 [CRC32]
+MOVE:    dir=0, steps=round(90/360×3200)=800=0x000320
+         makeFrame(0x0A, [01, 00, 20 03 00])  →  53 77 01 00 0A 00 0A 01 00 20 03 00 [CRC32]
+响应:    func=0x0A^0xFF=0xF5, data=[01, err(0=OK)]
+</pre>
+
+<h2>三、编译与冒烟验证</h2>
+<div class="box ok">
+<pre>
+--- Mac 编译 (CMakeLists V1.1.0) ---
+[100%] Built target SwComForTool      <span class="ok">零错误 零警告</span>
+
+--- 冒烟启动 (offscreen 无设备) ---
+启动 5s 进程存活, 无崩溃, UI(含 ZLR5401 四 Tab) 构造正常  <span class="ok">PASS</span>
+
+--- 自包含打包 (pack.sh) ---
+rpath=@executable_path/../Frameworks  <span class="ok">可移植</span>
+codesign --verify --deep --strict 通过  <span class="ok">SIGN_OK</span>
+产物: issue/Mac_Arm64/SwComForTool.app + issue/SwComForToolV1.1.0_macOS.zip (62M)
+</pre>
+</div>
+
+<h2>四、原 SCCD 未受影响（核对）</h2>
+<div class="box ok">
+<ul>
+<li>SCCD 的 <code>m_sccdBtn</code>/<code>m_sccdBox</code>/<code>m_sccdTabs</code>/三个协议 Tab/射频控制/全部 14443A·15693 槽<b>一行未改</b>（仅在其 Supported Devices 容器内 .addWidget 追加了 ZLR5401 按钮）。</li>
+<li><code>onSccdToggle</code>/SCCD 样式/生命周期原样；ZLR5401 单独 <code>onZlrToggle</code>/样式/生命周期，互不干扰。</li>
+<li>共享基础设施（<code>appendLog</code>/<code>appendSystemLog</code>/<code>waitForResponse</code>/<code>makeFrame</code>）为只读复用，未改其实现。</li>
+</ul>
+</div>
+
+<h2>五、Win 端影响核对（D1）</h2>
+<ul>
+<li><b>Win 构建脚本</b> <code>build_win.bat</code>(07-25 00:45)、<code>pack.bat</code>(00:54) <b>未触碰</b>。</li>
+<li><b>CMakeLists</b> 仅改版本号一行，<code>elseif(WIN32)</code> 分支未动。</li>
+<li><b>跨平台接口</b> <code>ITransport</code>/<code>ProtocolParser</code> 未改；新代码无 <code>#ifdef</code> 平台分支，Mac/Win 编译同一套源。</li>
+</ul>
+
+<h2>六、版本与产物</h2>
+<ul>
+<li>版本号：<b>V1.1.0</b>（计划中已建议，执行未再询问已升）</li>
+<li>可独立运行包：<code>issue/Mac_Arm64/SwComForTool.app</code>（含 VERSION.txt=1.1.0）</li>
+<li>分发 zip：<code>issue/SwComForToolV1.1.0_macOS.zip</code>（62M）</li>
+<li>源码改动：<code>src/MainWindow.h</code> / <code>src/MainWindow.cpp</code> / <code>CMakeLists.txt</code>(版本行)</li>
+</ul>
+
+<h2>七、已知特性与建议</h2>
+<div class="box warn">
+<ul>
+<li><b>真实通信未测</b>：本机无 ZLR5401 设备（SCCD 设备在时才走 USB），仅编译+冒烟验证 UI/帧构造。帧格式严格按 <code>App_Protocol.html</code> 构造（可信），待接真机实测——报告中如实标注。</li>
+<li><b>每转微步默认 3200</b> 为推定（协议未给细分值）。做成可编辑输入（<code>每转微步</code> SpinBox），接机后若设备细分不同改默认即可。</li>
+<li><b>UHF READ_TAG/WRITE_TAG、AM GET/SET_PARAM、开锁器 CONSUME_SOFT</b> 本轮未做（协议有、需求未点名、UI 未过度扩张）。可后续轮补。</li>
+<li><b>优化建议</b>：电机 MOVE 前先发 SPEED（已实现），但连续点"正转"会每次重发 SPEED；若设备支持，可缓存上次速度仅变更时发（当前更稳妥，均下发）。</li>
+</ul>
+</div>
+
+<h2>八、TrashCan / 备份</h2>
+<ul>
+<li>本轮<b>无文件删除</b>，TrashCan 不新增。</li>
+<li>变更前全量快照：<code>/Users/swnw/Documents/BackupArea/ComforTool/Round_002_20260823_171623</code>（主盘备份，212M ≤500M OK）。</li>
+</ul>
+
+<hr class="hr">
+<div class="box ok">
+<b>结论</b>：ZLR5401 扩展区已按 SCCD 交互范式新增，含<b>电机/UHF/AM/开锁器</b>四 Tab，正反转+角度控制实现，<b>原 SCCD 与 Win 接口零影响</b>。Mac 编译零错误零警告、冒烟无崩溃、V1.1.0 已打包。Round025 完成，待审查。
+</div>
+
+</body>
+</html>

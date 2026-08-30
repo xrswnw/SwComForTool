@@ -475,13 +475,11 @@ QByteArray HidManagerMac::readAll()
 //   无 friend 访问 outer class private, 故暴露 public appendRxFrame.
 void HidManagerMac::appendRxFrame(const QByteArray &raw)
 {
-    // 设备 IN 报告固定带 0x02 前缀 (App_Usb_HL_Transmit 加), 协议层帧首字节是 0x53.
-    // 兼容首字节已是 0x53 (无前缀) 的场景.
-    QByteArray frame = raw;
-    if (frame.size() >= 1 && static_cast<quint8>(frame[0]) == 0x02)
-        frame = frame.mid(1);
+    // Round 024/Display: 保留设备 IN 报告原文(首字节 0x02 报告 ID + 尾部 0 填充),
+    // 供日志/解析显示完整原始帧; parseFrame 已容忍可选 0x02 前缀.
+    // 不再在此剥离, 以便用户查看含报告 ID 的原始帧.
     QMutexLocker lock(&m_rxMutex);
-    m_rxBuf.append(frame);
+    m_rxBuf.append(raw);
 }
 
 void HidManagerMac::onReadData(const QByteArray &raw)

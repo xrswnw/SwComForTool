@@ -1,5 +1,7 @@
 #include "ProtocolParser.h"
 #include <QDebug>
+#include <QFile>
+#include <QTextStream>
 
 // Qt 6.11+ QString::arg(T,int,int,QChar) 不再隐式接受 unsigned，统一转 int
 static QString hex2(int v) { return QString("%1").arg(v, 2, 16, QChar('0')); }
@@ -102,37 +104,50 @@ QByteArray ProtocolParser::makeFrame(quint8 devAddr, quint8 fc, const QByteArray
 FrameData ProtocolParser::parseFrame(const QByteArray &raw) const
 {
     FrameData result;
-    if (raw.size() < 11) {
+    // 容忍可选 0x02 报告 ID 前缀 (HID 原始报告首字节, 设备协议前缀).
+    // 便于上层直接解析未剥离报告 ID 的原始帧, 同时兼容已剥离(53 开头)的帧.
+    int off = 0;
+    if (raw.size() >= 1 && static_cast<quint8>(raw[0]) == 0x02)
+        off = 1;
+    if (raw.size() - off < 11) {
         result.error = QString("帧长度不足: %1 < 11").arg(raw.size());
         return result;
     }
-    if (static_cast<quint8>(raw[0]) != 0x53 || static_cast<quint8>(raw[1]) != 0x77) {
-        result.error = QString("帧头错误: 0x%1 0x%2").arg(hex2(static_cast<int>(raw[0])), hex2(static_cast<int>(raw[1])));
+    if (static_cast<quint8>(raw[off]) != 0x53 || static_cast<quint8>(raw[off + 1]) != 0x77) {
+        result.error = QString("帧头错误: 0x%1 0x%2").arg(hex2(static_cast<int>(raw[off])), hex2(static_cast<int>(raw[off + 1])));
         return result;
     }
 
-    result.devAddr = static_cast<quint8>(raw[2]);
-    quint16 length = static_cast<quint8>(raw[4]) | (static_cast<quint8>(raw[5]) << 8);
-    result.fc = static_cast<quint8>(raw[6]);
+    result.devAddr = static_cast<quint8>(raw[off + 2]);
+    quint16 length = static_cast<quint8>(raw[off + 4]) | (static_cast<quint8>(raw[off + 5]) << 8);
+    result.fc = static_cast<quint8>(raw[off + 6]);
 
     int dataLen = length - 1 - 4; // FC(1) + CRC32(4)
     if (dataLen < 0 || dataLen > 1024) {
         result.error = QString("length 异常: %1").arg(length);
         return result;
     }
-    if (raw.size() < 7 + dataLen + 4) {
-        result.error = QString("帧长度不匹配: 期望%1 实际%2").arg(7 + dataLen + 4).arg(raw.size());
+    // 帧按协议 length 取定长切片, 容忍 HID 64B 报告尾部 0 填充 / 多帧拼接残留.
+    // 只要缓冲区里有足够字节就成功, 不要求 raw.size() 完全等于期望帧长.
+    int need = 7 + dataLen + 4;            // header(7 含 length) + data + crc(4)
+    { QFile _f("/tmp/comfor_parse_dbg.log"); _f.open(QIODevice::WriteOnly|QIODevice::Append|QIODevice::Text);
+      QTextStream _s(&_f); _s << "[parse] raw.size=" << raw.size()
+        << " off=" << off << " length=" << length << " dataLen=" << dataLen
+        << " need=" << need << " raw[size-1]=" << QString::number(static_cast<quint8>(raw[raw.size()-1]),16)
+        << "\n"; _s.flush(); }
+    if (raw.size() - off < need) {
+        result.error = QString("帧长度不足: 期望%1 实际%2").arg(need).arg(raw.size() - off);
         return result;
     }
 
-    result.data = raw.mid(7, dataLen);
+    result.data = raw.mid(off + 7, dataLen);
 
     // Verify CRC32 (允许 CRC 错误以兼容设备合并回传多帧场景)
-    QByteArray crcCheckData = raw.left(7 + dataLen);
-    quint32 crcStored = static_cast<quint8>(raw[7 + dataLen])
-                       | (static_cast<quint8>(raw[8 + dataLen]) << 8)
-                       | (static_cast<quint8>(raw[9 + dataLen]) << 16)
-                       | (static_cast<quint8>(raw[10 + dataLen]) << 24);
+    QByteArray crcCheckData = raw.mid(0, off + 7 + dataLen);
+    quint32 crcStored = static_cast<quint8>(raw[off + 7 + dataLen])
+                       | (static_cast<quint8>(raw[off + 8 + dataLen]) << 8)
+                       | (static_cast<quint8>(raw[off + 9 + dataLen]) << 16)
+                       | (static_cast<quint8>(raw[off + 10 + dataLen]) << 24);
     quint32 crcCalc = crc32(reinterpret_cast<const quint8*>(crcCheckData.constData()), crcCheckData.size());
     if (crcStored != crcCalc) {
         // CRC 不匹配但帧头/length 合理, 标记 error 但仍返回 valid (设备协议: 帧后追加 data)

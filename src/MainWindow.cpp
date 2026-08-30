@@ -13,6 +13,7 @@ static QString hex2(int v) { return QString("%1").arg(v, 2, 16, QChar('0')); }
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QGroupBox>
+#include <QHeaderView>
 #include <QLabel>
 #include <QSplitter>
 #include <QTime>
@@ -295,6 +296,13 @@ void MainWindow::setupUI()
     m_sccdBtn->setToolTip(tr("切换 Sccd Area 显示/隐藏 (RFID 15693 / 14443A / 14443B)"));
     connect(m_sccdBtn, &QPushButton::toggled, this, &MainWindow::onSccdToggle);
     supportedLayout->addWidget(m_sccdBtn);
+    // ZLR5401 按钮 (Sccd 下方, 参照 Sccd 交互: 可勾选 + toggle 展开 ZLR5401 Area)
+    m_zlrBtn = new QPushButton(tr("ZLR5401"));
+    m_zlrBtn->setObjectName("zlrBtn");
+    m_zlrBtn->setCheckable(true);
+    m_zlrBtn->setToolTip(tr("切换 ZLR5401 Area 显示/隐藏 (电机 / UHF / AM / 开锁器)"));
+    connect(m_zlrBtn, &QPushButton::toggled, this, &MainWindow::onZlrToggle);
+    supportedLayout->addWidget(m_zlrBtn);
     supportedLayout->addStretch();  // Sccd 下方留白 (占四行高度)
     btnGrid->addWidget(supportedBox, 0, 2, 4, 1);  // 跨 4 行, 第 3 列
 
@@ -376,6 +384,7 @@ void MainWindow::setupUI()
     m_updateBtn->setEnabled(false);
     m_debugBtn->setEnabled(false);
     m_sccdBtn->setEnabled(false);
+    if (m_zlrBtn) m_zlrBtn->setEnabled(false);
     // App Protocol 3 个 FC 按钮默认禁用, 握手成功后由 enableFuncButtons(true) + m_funcUnlocked 启用
     if (m_protoEnterBootBtn) m_protoEnterBootBtn->setEnabled(false);
     if (m_protoResetBtn)     m_protoResetBtn->setEnabled(false);
@@ -794,6 +803,723 @@ void MainWindow::setupUI()
 
     mainLayout->addWidget(m_sccdBox);
 
+    // ===== ZLR5401 Area (Sccd 下方独立 QGroupBox, 默认隐藏, ZLR5401 按钮切换) =====
+    m_zlrBox = new QGroupBox(tr("ZLR5401 Area"));
+    m_zlrBox->setObjectName("zlrBox");
+    m_zlrBox->setVisible(false); // 默认隐藏
+    auto *zlrOuterLayout = new QVBoxLayout(m_zlrBox);
+    zlrOuterLayout->setContentsMargins(8, 6, 8, 6);
+    zlrOuterLayout->setSpacing(6);
+
+    // ZLR5401 TabWidget (电机 / UHF / AM / 开锁器)
+    m_zlrTabs = new QTabWidget;
+    m_zlrTabs->setObjectName("zlrTabs");
+    m_zlrTabs->setDocumentMode(true);
+
+    // ---------- 电机 Tab (FC=0x0A) ----------
+    {
+        auto *w = new QWidget;
+        auto *l = new QVBoxLayout(w);
+        l->setContentsMargins(8, 8, 8, 8);
+        l->setSpacing(8);
+
+        // ===== 第一行: 速度 / 转矩 / 其他 三等分 =====
+        auto *row1 = new QHBoxLayout;
+        row1->setSpacing(8);
+
+        // ---- 速度区 (边框"速度"): 速度+每转微步上下列 + 设速度 ----
+        auto *spdBox = new QGroupBox(tr("速度"));
+        spdBox->setObjectName("zlrMotorGroup");
+        auto *spdL = new QVBoxLayout(spdBox);
+        spdL->setContentsMargins(8, 6, 8, 6);
+        spdL->setSpacing(4);
+        spdL->addWidget(new QLabel(tr("速度(微步/s):")));
+        m_zlrMotorSpeed = new QSpinBox;
+        m_zlrMotorSpeed->setRange(1, 2000);
+        m_zlrMotorSpeed->setValue(1000);
+        m_zlrMotorSpeed->setAlignment(Qt::AlignCenter);
+        spdL->addWidget(m_zlrMotorSpeed);
+        spdL->addWidget(new QLabel(tr("每转微步:")));
+        m_zlrMotorSteps = new QSpinBox;
+        m_zlrMotorSteps->setRange(1, 100000);
+        m_zlrMotorSteps->setValue(400);   // 17HS3401: 200整步/转 × 2(1/2微步) = 400步/转, 与固件 App_Stepper.c:84 DRV8434S_MICROSTEP_HALF 一致
+        m_zlrMotorSteps->setAlignment(Qt::AlignCenter);
+        m_zlrMotorSteps->setToolTip(tr("电机转一圈的微步数 (200步 x 细分数)"));
+        spdL->addWidget(m_zlrMotorSteps);
+        m_zlrMotorSpeedBtn = new QPushButton(tr("设速度"));
+        m_zlrMotorSpeedBtn->setObjectName("zlrMotorBtn");
+        m_zlrMotorSpeedBtn->setToolTip(tr("单独下发 SPEED 命令 (FC=0x0A/0x03)"));
+        connect(m_zlrMotorSpeedBtn, &QPushButton::clicked, this, &MainWindow::onMotorSpeed);
+        spdL->addWidget(m_zlrMotorSpeedBtn);
+        row1->addWidget(spdBox, 1);
+
+        // ---- 转矩区 (边框"转矩"): 转矩 spin + 设转矩 ----
+        auto *trqBox = new QGroupBox(tr("转矩"));
+        trqBox->setObjectName("zlrMotorGroup");
+        auto *trqL = new QVBoxLayout(trqBox);
+        trqL->setContentsMargins(8, 6, 8, 6);
+        trqL->setSpacing(4);
+        trqL->addWidget(new QLabel(tr("转矩(%):")));
+        m_zlrMotorTorque = new QSpinBox;
+        m_zlrMotorTorque->setRange(6, 100);
+        m_zlrMotorTorque->setValue(50);
+        m_zlrMotorTorque->setAlignment(Qt::AlignCenter);
+        trqL->addWidget(m_zlrMotorTorque);
+        m_zlrMotorTorqueBtn = new QPushButton(tr("设转矩"));
+        m_zlrMotorTorqueBtn->setObjectName("zlrMotorBtn");
+        m_zlrMotorTorqueBtn->setToolTip(tr("单独下发 TORQUE 命令 (FC=0x0A/0x04)"));
+        connect(m_zlrMotorTorqueBtn, &QPushButton::clicked, this, &MainWindow::onMotorTorque);
+        trqL->addWidget(m_zlrMotorTorqueBtn);
+        row1->addWidget(trqBox, 1);
+
+        // ---- 其他区 (边框"其他"): 获取 / 健康 / 统计 / 清除故障 ----
+        auto *othBox = new QGroupBox(tr("其他"));
+        othBox->setObjectName("zlrMotorGroup");
+        auto *othL = new QVBoxLayout(othBox);
+        othL->setContentsMargins(8, 6, 8, 6);
+        othL->setSpacing(4);
+        m_zlrMotorStateBtn = new QPushButton(tr("获取"));
+        m_zlrMotorStateBtn->setObjectName("zlrMotorBtn");
+        m_zlrMotorStateBtn->setToolTip(tr("查询电机状态/故障/已走微步数 (QUERY)"));
+        connect(m_zlrMotorStateBtn, &QPushButton::clicked, this, &MainWindow::onMotorQuery);
+        othL->addWidget(m_zlrMotorStateBtn);
+        m_zlrMotorHealthBtn = new QPushButton(tr("健康"));
+        m_zlrMotorHealthBtn->setObjectName("zlrMotorBtn");
+        m_zlrMotorHealthBtn->setToolTip(tr("读健康/堵转监测 (HEALTH)"));
+        connect(m_zlrMotorHealthBtn, &QPushButton::clicked, this, &MainWindow::onMotorHealth);
+        othL->addWidget(m_zlrMotorHealthBtn);
+        m_zlrMotorStatsBtn = new QPushButton(tr("统计"));
+        m_zlrMotorStatsBtn->setObjectName("zlrMotorBtn");
+        m_zlrMotorStatsBtn->setToolTip(tr("读运行统计 (STATS)"));
+        connect(m_zlrMotorStatsBtn, &QPushButton::clicked, this, &MainWindow::onMotorStats);
+        othL->addWidget(m_zlrMotorStatsBtn);
+        m_zlrMotorClearBtn = new QPushButton(tr("清除故障"));
+        m_zlrMotorClearBtn->setObjectName("zlrMotorMain");
+        connect(m_zlrMotorClearBtn, &QPushButton::clicked, this, &MainWindow::onMotorClear);
+        othL->addWidget(m_zlrMotorClearBtn);
+        row1->addWidget(othBox, 1);
+
+        l->addLayout(row1);
+
+        // ===== 第二行: 控制 / 行程测试 二等分 =====
+        auto *row2 = new QHBoxLayout;
+        row2->setSpacing(8);
+
+        // ---- 控制区 (边框"控制"): 角度 + 正转/停止/反转 ----
+        auto *ctlBox = new QGroupBox(tr("控制"));
+        ctlBox->setObjectName("zlrMotorGroup");
+        auto *ctlL = new QVBoxLayout(ctlBox);
+        ctlL->setContentsMargins(8, 6, 8, 6);
+        ctlL->setSpacing(8);
+        auto *angleRow = new QHBoxLayout;
+        angleRow->setSpacing(6);
+        angleRow->addWidget(new QLabel(tr("角度(°):")));
+        m_zlrMotorAngle = new QSpinBox;
+        m_zlrMotorAngle->setRange(0, 360000);   // 0=持续运行; 上限 1000圈×360°
+        m_zlrMotorAngle->setValue(90);
+        m_zlrMotorAngle->setAlignment(Qt::AlignCenter);
+        m_zlrMotorAngle->setToolTip(tr("电机旋转角度(0~360000°); 0 = 持续运行; 单次上限约5242圈"));
+        angleRow->addWidget(m_zlrMotorAngle, 1);
+        ctlL->addLayout(angleRow);
+        auto *dirRow = new QHBoxLayout;
+        dirRow->setSpacing(8);
+        m_zlrMotorCwBtn = new QPushButton(tr("正转(CW)"));
+        m_zlrMotorCwBtn->setObjectName("zlrMotorMain");
+        connect(m_zlrMotorCwBtn, &QPushButton::clicked, this, &MainWindow::onMotorMoveCw);
+        dirRow->addWidget(m_zlrMotorCwBtn);
+        m_zlrMotorStopBtn = new QPushButton(tr("停止"));
+        m_zlrMotorStopBtn->setObjectName("zlrMotorStop");   // 警示色
+        connect(m_zlrMotorStopBtn, &QPushButton::clicked, this, &MainWindow::onMotorStop);
+        dirRow->addWidget(m_zlrMotorStopBtn);
+        m_zlrMotorCcwBtn = new QPushButton(tr("反转(CCW)"));
+        m_zlrMotorCcwBtn->setObjectName("zlrMotorMain");
+        connect(m_zlrMotorCcwBtn, &QPushButton::clicked, this, &MainWindow::onMotorMoveCcw);
+        dirRow->addWidget(m_zlrMotorCcwBtn);
+        ctlL->addLayout(dirRow);
+        row2->addWidget(ctlBox, 1);
+
+        // ---- 行程测试区 (边框"行程测试"): 次数 + 行程测试 ----
+        auto *testBox = new QGroupBox(tr("行程测试"));
+        testBox->setObjectName("zlrMotorGroup");
+        auto *testL = new QVBoxLayout(testBox);
+        testL->setContentsMargins(8, 6, 8, 6);
+        testL->setSpacing(6);
+        auto *testRow = new QHBoxLayout;
+        testRow->setSpacing(6);
+        testRow->addWidget(new QLabel(tr("次数:")));
+        m_zlrMotorTestPasses = new QSpinBox;
+        m_zlrMotorTestPasses->setRange(1, 100);
+        m_zlrMotorTestPasses->setValue(1);
+        m_zlrMotorTestPasses->setToolTip(tr("行程测试往返次数"));
+        testRow->addWidget(m_zlrMotorTestPasses, 1);
+        testL->addLayout(testRow);
+        m_zlrMotorTestBtn = new QPushButton(tr("行程测试"));
+        m_zlrMotorTestBtn->setObjectName("zlrMotorMain");
+        m_zlrMotorTestBtn->setToolTip(tr("最高速正转→触碰行程→反转→完成1次往返"));
+        connect(m_zlrMotorTestBtn, &QPushButton::clicked, this, &MainWindow::onMotorTest);
+        testL->addWidget(m_zlrMotorTestBtn);
+        row2->addWidget(testBox, 1);
+
+        l->addLayout(row2);
+
+        // 输出区 (QUERY/HEALTH/STATS 详情滚动)
+        auto *outBox = new QGroupBox(tr("输出区"));
+        outBox->setObjectName("zlrOutBox");
+        auto *outL = new QVBoxLayout(outBox);
+        outL->setContentsMargins(4, 4, 4, 4);
+        m_zlrMotorOut = new QTextEdit;
+        m_zlrMotorOut->setObjectName("zlrOut");
+        m_zlrMotorOut->setReadOnly(true);
+        m_zlrMotorOut->setFont(QFont("Menlo", 10));
+        outL->addWidget(m_zlrMotorOut);
+        l->addWidget(outBox, 1);
+
+        m_zlrTabs->addTab(w, tr("电机"));
+    }
+
+    // ---------- RGB Tab (FC=0x0E) ----------
+    {
+        auto *w = new QWidget;
+        auto *l = new QVBoxLayout(w);
+        l->setContentsMargins(8, 8, 8, 8);
+        l->setSpacing(8);
+
+        // ===== 第一行: 颜色区 / 控制区 二等分 =====
+        auto *row1 = new QHBoxLayout;
+        row1->setSpacing(8);
+
+        // ---- 颜色区 (边框"颜色"): 三勾选 + 组合提示 ----
+        auto *colorBox = new QGroupBox(tr("颜色"));
+        colorBox->setObjectName("zlrMotorGroup");
+        auto *colorL = new QVBoxLayout(colorBox);
+        colorL->setContentsMargins(8, 6, 8, 6);
+        colorL->setSpacing(6);
+        auto *cbRow = new QHBoxLayout; cbRow->setSpacing(12);
+        m_zlrRgbG = new QCheckBox(tr("绿 (G)")); m_zlrRgbG->setObjectName("zlrRgbG");
+        m_zlrRgbR = new QCheckBox(tr("红 (R)")); m_zlrRgbR->setObjectName("zlrRgbR");
+        m_zlrRgbB = new QCheckBox(tr("蓝 (B)")); m_zlrRgbB->setObjectName("zlrRgbB");
+        cbRow->addStretch(); cbRow->addWidget(m_zlrRgbG); cbRow->addWidget(m_zlrRgbR); cbRow->addWidget(m_zlrRgbB); cbRow->addStretch();
+        colorL->addLayout(cbRow);
+        auto *cHint = new QLabel(tr("mask: 0x01绿 0x02红 0x04蓝, 可组合 (0x03黄/0x05青/0x06紫/0x07白)"));
+        cHint->setStyleSheet("color:#8870a8; font-size:0.82em;");
+        cHint->setWordWrap(true);
+        cHint->setAlignment(Qt::AlignCenter);
+        colorL->addWidget(cHint);
+        row1->addWidget(colorBox, 2);
+
+        // ---- 控制区 (边框"控制"): 下发 / 全灭 + 上次 mask ----
+        auto *ctlBox = new QGroupBox(tr("控制"));
+        ctlBox->setObjectName("zlrMotorGroup");
+        auto *ctlL = new QVBoxLayout(ctlBox);
+        ctlL->setContentsMargins(8, 6, 8, 6);
+        ctlL->setSpacing(6);
+        auto *bRow = new QHBoxLayout; bRow->setSpacing(8);
+        m_zlrRgbSetBtn = new QPushButton(tr("下发 RGB")); m_zlrRgbSetBtn->setObjectName("zlrAmMain");
+        m_zlrRgbSetBtn->setToolTip(tr("按当前勾选组合下发 FC=0x0E SET"));
+        connect(m_zlrRgbSetBtn, &QPushButton::clicked, this, &MainWindow::onRgbSet);
+        bRow->addWidget(m_zlrRgbSetBtn, 1);
+        m_zlrRgbClearBtn = new QPushButton(tr("全灭")); m_zlrRgbClearBtn->setObjectName("zlrUhfBtn");
+        m_zlrRgbClearBtn->setToolTip(tr("下发 mask=0x00 全灭, 并清除勾选"));
+        connect(m_zlrRgbClearBtn, &QPushButton::clicked, this, &MainWindow::onRgbClear);
+        bRow->addWidget(m_zlrRgbClearBtn, 1);
+        ctlL->addLayout(bRow);
+        m_zlrRgbOutLabel = new QLabel(tr("上次 mask: --"));
+        m_zlrRgbOutLabel->setAlignment(Qt::AlignCenter);
+        ctlL->addWidget(m_zlrRgbOutLabel);
+        row1->addWidget(ctlBox, 1);
+
+        l->addLayout(row1);
+        l->addStretch();
+
+        m_zlrTabs->addTab(w, tr("RGB"));
+    }
+
+    // ---------- 自检 Tab (FC=0x0F, 设备级自检/锁存错误位) ----------
+    {
+        auto *w = new QWidget;
+        auto *l = new QVBoxLayout(w);
+        l->setContentsMargins(8, 8, 8, 8);
+        l->setSpacing(8);
+
+        // ===== 第一行: 错误位区 / 操作区 二等分 =====
+        auto *row1 = new QHBoxLayout;
+        row1->setSpacing(8);
+
+        // ---- 错误位区 (边框"错误位"): 锁存位 + 实时诊断 ----
+        auto *errBox = new QGroupBox(tr("错误位"));
+        errBox->setObjectName("zlrMotorGroup");
+        auto *errL = new QVBoxLayout(errBox);
+        errL->setContentsMargins(8, 6, 8, 6);
+        errL->setSpacing(4);
+        m_zlrSelfErrBitsLabel = new QLabel(tr("(未查询)  锁存错误位 16bit (bit0 MOTOR_SPI / bit1 MOTOR_FAULT / bit2 UHF_COMM / bit3 AM_COMM / bit4 PARAM_CRC / bit5 TRAVEL_SW)"));
+        m_zlrSelfErrBitsLabel->setObjectName("zlrSelfErrBitsLabel");
+        m_zlrSelfErrBitsLabel->setAlignment(Qt::AlignCenter);
+        m_zlrSelfErrBitsLabel->setWordWrap(true);
+        m_zlrSelfErrBitsLabel->setStyleSheet("color:#2a2438; font-size:0.92em; padding:4px;");
+        errL->addWidget(m_zlrSelfErrBitsLabel);
+        m_zlrSelfDiagLabel = new QLabel(tr("(未查询)  实时诊断: motorCommOk=? drvFault=0x?? uhfLink=? amLink=? paramCrc=? switchErr=0x??"));
+        m_zlrSelfDiagLabel->setObjectName("zlrSelfDiagLabel");
+        m_zlrSelfDiagLabel->setAlignment(Qt::AlignCenter);
+        m_zlrSelfDiagLabel->setWordWrap(true);
+        m_zlrSelfDiagLabel->setStyleSheet("color:#503070; font-size:0.85em;");
+        errL->addWidget(m_zlrSelfDiagLabel);
+        row1->addWidget(errBox, 2);
+
+        // ---- 操作区 (边框"操作"): 查询/重探 + 清错误(掩码) ----
+        auto *opBox = new QGroupBox(tr("操作"));
+        opBox->setObjectName("zlrMotorGroup");
+        auto *opL = new QVBoxLayout(opBox);
+        opL->setContentsMargins(8, 6, 8, 6);
+        opL->setSpacing(6);
+        auto *qRow = new QHBoxLayout; qRow->setSpacing(6);
+        m_zlrSelfQueryBtn = new QPushButton(tr("查询"));
+        m_zlrSelfQueryBtn->setObjectName("zlrUhfBtn");
+        m_zlrSelfQueryBtn->setToolTip(tr("QUERY: 读锁存错误位 + 实时诊断快照 (无阻塞)"));
+        connect(m_zlrSelfQueryBtn, &QPushButton::clicked, this, &MainWindow::onSelfTestQuery);
+        qRow->addWidget(m_zlrSelfQueryBtn, 1);
+        m_zlrSelfRerunBtn = new QPushButton(tr("重探"));
+        m_zlrSelfRerunBtn->setObjectName("zlrAmMain");
+        m_zlrSelfRerunBtn->setToolTip(tr("RERUN: 重探外设并刷新锁存位 (阻塞~3s)"));
+        connect(m_zlrSelfRerunBtn, &QPushButton::clicked, this, &MainWindow::onSelfTestRerun);
+        qRow->addWidget(m_zlrSelfRerunBtn, 1);
+        opL->addLayout(qRow);
+        auto *cRow = new QHBoxLayout; cRow->setSpacing(6);
+        cRow->addWidget(new QLabel(tr("掩码:")));
+        m_zlrSelfClearMask = new QSpinBox;
+        m_zlrSelfClearMask->setRange(0, 65535);
+        m_zlrSelfClearMask->setValue(0xFFFF);   // 默认全清
+        m_zlrSelfClearMask->setDisplayIntegerBase(16);
+        m_zlrSelfClearMask->setToolTip(tr("CLEAR 掩码 16bit (bit0~bit5, 与错误位定义一致)"));
+        cRow->addWidget(m_zlrSelfClearMask, 1);
+        m_zlrSelfClearBtn = new QPushButton(tr("清错误"));
+        m_zlrSelfClearBtn->setObjectName("zlrUhfBtn");
+        m_zlrSelfClearBtn->setToolTip(tr("CLEAR: 按掩码清指定位, 响应回剩余位图"));
+        connect(m_zlrSelfClearBtn, &QPushButton::clicked, this, &MainWindow::onSelfTestClear);
+        cRow->addWidget(m_zlrSelfClearBtn, 1);
+        opL->addLayout(cRow);
+        row1->addWidget(opBox, 1);
+
+        l->addLayout(row1);
+
+        // 输出区
+        auto *outBox = new QGroupBox(tr("输出区"));
+        outBox->setObjectName("zlrOutBox");
+        auto *outL = new QVBoxLayout(outBox);
+        outL->setContentsMargins(4, 4, 4, 4);
+        m_zlrSelfOut = new QTextEdit;
+        m_zlrSelfOut->setObjectName("zlrOut");
+        m_zlrSelfOut->setReadOnly(true);
+        m_zlrSelfOut->setFont(QFont("Menlo", 10));
+        outL->addWidget(m_zlrSelfOut);
+        l->addWidget(outBox, 1);
+
+        m_zlrTabs->addTab(w, tr("自检"));
+    }
+
+    // ---------- UHF Tab (FC=0x0B) ----------
+    {
+        auto *w = new QWidget;
+        auto *l = new QVBoxLayout(w);
+        l->setContentsMargins(8, 8, 8, 8);
+        l->setSpacing(6);
+
+        // ===== 第一行: 配置区 / 控制区 二等分 =====
+        auto *row1 = new QHBoxLayout;
+        row1->setSpacing(8);
+
+        // ---- 配置区 (边框"配置"): 功率/频段/EPC/读写参数 + 读/写配置 ----
+        auto *cfgBox = new QGroupBox(tr("配置"));
+        cfgBox->setObjectName("zlrMotorGroup");
+        auto *cfgL = new QVBoxLayout(cfgBox);
+        cfgL->setContentsMargins(8, 6, 8, 6);
+        cfgL->setSpacing(3);
+        auto *pRow = new QHBoxLayout; pRow->setSpacing(6);
+        pRow->addWidget(new QLabel(tr("功率:")));
+        m_zlrUhfPower = new QSpinBox; m_zlrUhfPower->setRange(5, 30); m_zlrUhfPower->setValue(20);
+        pRow->addWidget(m_zlrUhfPower, 1);
+        pRow->addWidget(new QLabel(tr("频段:")));
+        m_zlrUhfBand = new QComboBox;
+        m_zlrUhfBand->addItem("北美", 0x01); m_zlrUhfBand->addItem("中国1", 0x06);
+        m_zlrUhfBand->addItem("CE_LOW", 0x08); m_zlrUhfBand->addItem("全频段", 0xFF);
+        pRow->addWidget(m_zlrUhfBand, 1);
+        cfgL->addLayout(pRow);
+        auto *epcRow = new QHBoxLayout; epcRow->setSpacing(6);
+        epcRow->addWidget(new QLabel(tr("EPC:")));
+        m_zlrUhfEpc = new QLineEdit; m_zlrUhfEpc->setMaxLength(24);
+        m_zlrUhfEpc->setPlaceholderText("hex"); m_zlrUhfEpc->setFont(QFont("Menlo", 10));
+        epcRow->addWidget(m_zlrUhfEpc, 1);
+        cfgL->addLayout(epcRow);
+        auto *ragRow = new QHBoxLayout; ragRow->setSpacing(6);
+        ragRow->addWidget(new QLabel(tr("Bank:")));
+        m_zlrUhfBank = new QSpinBox; m_zlrUhfBank->setRange(0, 3); m_zlrUhfBank->setValue(1);
+        ragRow->addWidget(m_zlrUhfBank, 1);
+        ragRow->addWidget(new QLabel(tr("Addr:")));
+        m_zlrUhfAddr = new QSpinBox; m_zlrUhfAddr->setRange(0, 255); m_zlrUhfAddr->setValue(0);
+        ragRow->addWidget(m_zlrUhfAddr, 1);
+        ragRow->addWidget(new QLabel(tr("Cnt:")));
+        m_zlrUhfCnt = new QSpinBox; m_zlrUhfCnt->setRange(1, 96); m_zlrUhfCnt->setValue(2);
+        ragRow->addWidget(m_zlrUhfCnt, 1);
+        cfgL->addLayout(ragRow);
+        auto *dataRow = new QHBoxLayout; dataRow->setSpacing(6);
+        dataRow->addWidget(new QLabel(tr("数据:")));
+        m_zlrUhfData = new QLineEdit; m_zlrUhfData->setMaxLength(192);
+        m_zlrUhfData->setPlaceholderText("写标签 hex"); m_zlrUhfData->setFont(QFont("Menlo", 10));
+        dataRow->addWidget(m_zlrUhfData, 1);
+        cfgL->addLayout(dataRow);
+        auto *cfgBtnRow = new QHBoxLayout; cfgBtnRow->setSpacing(6);
+        m_zlrUhfSetCfgBtn = new QPushButton(tr("设配置")); m_zlrUhfSetCfgBtn->setObjectName("zlrUhfBtn");
+        connect(m_zlrUhfSetCfgBtn, &QPushButton::clicked, this, &MainWindow::onUhfSetConfig);
+        cfgBtnRow->addWidget(m_zlrUhfSetCfgBtn);
+        m_zlrUhfGetCfgBtn = new QPushButton(tr("读配置")); m_zlrUhfGetCfgBtn->setObjectName("zlrUhfBtn");
+        connect(m_zlrUhfGetCfgBtn, &QPushButton::clicked, this, &MainWindow::onUhfGetConfig);
+        cfgBtnRow->addWidget(m_zlrUhfGetCfgBtn);
+        cfgL->addLayout(cfgBtnRow);
+        row1->addWidget(cfgBox, 1);
+
+        // ---- 控制区 (边框"控制"): 开启/关闭/盘点/查询/取标签/读状态/天线检测 ----
+        auto *ctlBox = new QGroupBox(tr("控制"));
+        ctlBox->setObjectName("zlrMotorGroup");
+        auto *ctlL = new QVBoxLayout(ctlBox);
+        ctlL->setContentsMargins(8, 6, 8, 6);
+        ctlL->setSpacing(4);
+        auto mkOpBtn = [](const QString &txt, const char *obj) { auto *b = new QPushButton(txt); b->setObjectName(obj); return b; };
+        m_zlrUhfOpenBtn = mkOpBtn(tr("开启"), "zlrUhfMain");
+        connect(m_zlrUhfOpenBtn, &QPushButton::clicked, this, &MainWindow::onUhfOpen);
+        m_zlrUhfCloseBtn = mkOpBtn(tr("关闭"), "zlrUhfBtn");
+        connect(m_zlrUhfCloseBtn, &QPushButton::clicked, this, &MainWindow::onUhfClose);
+        m_zlrUhfInvBtn = mkOpBtn(tr("盘点"), "zlrUhfBtn");
+        connect(m_zlrUhfInvBtn, &QPushButton::clicked, this, &MainWindow::onUhfInventory);
+        m_zlrUhfQueryBtn = mkOpBtn(tr("查询"), "zlrUhfBtn");
+        connect(m_zlrUhfQueryBtn, &QPushButton::clicked, this, &MainWindow::onUhfQuery);
+        m_zlrUhfGetTagsBtn = mkOpBtn(tr("取标签"), "zlrUhfBtn");
+        connect(m_zlrUhfGetTagsBtn, &QPushButton::clicked, this, &MainWindow::onUhfGetTags);
+        m_zlrUhfStatusBtn = mkOpBtn(tr("读状态"), "zlrUhfBtn");
+        connect(m_zlrUhfStatusBtn, &QPushButton::clicked, this, &MainWindow::onUhfGetStatus);
+        m_zlrUhfAntBtn = mkOpBtn(tr("天线检测"), "zlrUhfBtn");
+        connect(m_zlrUhfAntBtn, &QPushButton::clicked, this, &MainWindow::onUhfCheckAnt);
+        // 2 行铺 7 个 (4+3)
+        auto *c1 = new QHBoxLayout; c1->setSpacing(6);
+        c1->addWidget(m_zlrUhfOpenBtn, 1); c1->addWidget(m_zlrUhfCloseBtn, 1);
+        c1->addWidget(m_zlrUhfInvBtn, 1); c1->addWidget(m_zlrUhfQueryBtn, 1);
+        ctlL->addLayout(c1);
+        auto *c2 = new QHBoxLayout; c2->setSpacing(6);
+        c2->addWidget(m_zlrUhfGetTagsBtn, 1); c2->addWidget(m_zlrUhfStatusBtn, 1);
+        c2->addWidget(m_zlrUhfAntBtn, 1); c2->addStretch(1);
+        ctlL->addLayout(c2);
+        row1->addWidget(ctlBox, 2);
+
+        l->addLayout(row1);
+
+        // ===== 第二行: 扫描区 / 读写区 二等分 =====
+        auto *row2 = new QHBoxLayout;
+        row2->setSpacing(8);
+
+        // ---- 扫描区 (边框"扫描"): 周期/自动扫描/停扫/诊断 ----
+        auto *scanBox = new QGroupBox(tr("扫描"));
+        scanBox->setObjectName("zlrMotorGroup");
+        auto *scanL = new QVBoxLayout(scanBox);
+        scanL->setContentsMargins(8, 6, 8, 6);
+        scanL->setSpacing(4);
+        auto *cycRow = new QHBoxLayout; cycRow->setSpacing(6);
+        cycRow->addWidget(new QLabel(tr("周期(ms):")));
+        m_zlrUhfCycle = new QSpinBox; m_zlrUhfCycle->setRange(200, 60000); m_zlrUhfCycle->setValue(1000);
+        m_zlrUhfCycle->setToolTip(tr("SCAN_START 每轮盘存超时"));
+        cycRow->addWidget(m_zlrUhfCycle, 1);
+        scanL->addLayout(cycRow);
+        auto *s1 = new QHBoxLayout; s1->setSpacing(6);
+        m_zlrUhfScanBtn = new QPushButton(tr("自动扫描")); m_zlrUhfScanBtn->setObjectName("zlrUhfMain");
+        m_zlrUhfScanBtn->setToolTip(tr("SCAN_START 连续盘点入缓冲"));
+        connect(m_zlrUhfScanBtn, &QPushButton::clicked, this, &MainWindow::onUhfSetScan);
+        s1->addWidget(m_zlrUhfScanBtn, 1);
+        m_zlrUhfScanStopBtn = new QPushButton(tr("停扫描")); m_zlrUhfScanStopBtn->setObjectName("zlrUhfBtn");
+        connect(m_zlrUhfScanStopBtn, &QPushButton::clicked, this, &MainWindow::onUhfScanStop);
+        s1->addWidget(m_zlrUhfScanStopBtn, 1);
+        scanL->addLayout(s1);
+        m_zlrUhfDumpBtn = new QPushButton(tr("诊断")); m_zlrUhfDumpBtn->setObjectName("zlrUhfBtn");
+        m_zlrUhfDumpBtn->setToolTip(tr("GET_DUMP 原始字节诊断"));
+        connect(m_zlrUhfDumpBtn, &QPushButton::clicked, this, &MainWindow::onUhfGetDump);
+        scanL->addWidget(m_zlrUhfDumpBtn);
+        row2->addWidget(scanBox, 1);
+
+        // ---- 读写区 (边框"读写"): 读标签 / 写标签 ----
+        auto *rwBox = new QGroupBox(tr("读写"));
+        rwBox->setObjectName("zlrMotorGroup");
+        auto *rwL = new QVBoxLayout(rwBox);
+        rwL->setContentsMargins(8, 6, 8, 6);
+        rwL->setSpacing(6);
+        auto *rwRow = new QHBoxLayout; rwRow->setSpacing(8);
+        m_zlrUhfReadBtn = new QPushButton(tr("读标签")); m_zlrUhfReadBtn->setObjectName("zlrUhfMain");
+        connect(m_zlrUhfReadBtn, &QPushButton::clicked, this, &MainWindow::onUhfReadTag);
+        rwRow->addWidget(m_zlrUhfReadBtn);
+        m_zlrUhfWriteBtn = new QPushButton(tr("写标签")); m_zlrUhfWriteBtn->setObjectName("zlrUhfMain");
+        connect(m_zlrUhfWriteBtn, &QPushButton::clicked, this, &MainWindow::onUhfWriteTag);
+        rwRow->addWidget(m_zlrUhfWriteBtn);
+        rwL->addLayout(rwRow);
+        auto *rwHint = new QLabel(tr("按上方配置的 EPC / Bank / Addr / Cnt 操作"));
+        rwHint->setStyleSheet("color:#8870a8; font-size:0.82em;");
+        rwHint->setAlignment(Qt::AlignCenter);
+        rwL->addWidget(rwHint);
+        row2->addWidget(rwBox, 1);
+
+        l->addLayout(row2);
+
+        // 行3: 标签表格 (左, 双击 EPC 填入输入框) + 输出区 (右)
+        auto *ioUhfRow = new QHBoxLayout;
+        ioUhfRow->setSpacing(8);
+
+        auto *tagBox = new QGroupBox(tr("标签列表 (双击 EPC 填入)"));
+        tagBox->setObjectName("zlrTagBox");
+        auto *tagL = new QVBoxLayout(tagBox);
+        tagL->setContentsMargins(4, 4, 4, 4);
+        m_zlrUhfTagTable = new QTableWidget(0, 3, this);
+        m_zlrUhfTagTable->setObjectName("zlrTagTable");
+        m_zlrUhfTagTable->setHorizontalHeaderLabels({tr("EPC"), tr("RSSI"), tr("对象")});
+        m_zlrUhfTagTable->verticalHeader()->setVisible(false);
+        m_zlrUhfTagTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        m_zlrUhfTagTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+        m_zlrUhfTagTable->setSelectionMode(QAbstractItemView::SingleSelection);
+        m_zlrUhfTagTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+        m_zlrUhfTagTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+        m_zlrUhfTagTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+        m_zlrUhfTagTable->setFont(QFont("Menlo", 10));
+        m_zlrUhfTagTable->setToolTip(tr("双击 EPC 单元格, 将其填入上方 EPC 输入框"));
+        connect(m_zlrUhfTagTable, &QTableWidget::cellDoubleClicked, this,
+                [this](int row, int) {
+                    if (m_zlrUhfTagTable && m_zlrUhfEpc) {
+                        auto *it = m_zlrUhfTagTable->item(row, 0);
+                        if (it) { m_zlrUhfEpc->setText(it->text()); m_zlrUhfEpc->setFocus(); }
+                    }
+                });
+        tagL->addWidget(m_zlrUhfTagTable);
+        ioUhfRow->addWidget(tagBox, 3);
+
+        auto *outBox = new QGroupBox(tr("输出区"));
+        outBox->setObjectName("zlrOutBox");
+        auto *outL = new QVBoxLayout(outBox);
+        outL->setContentsMargins(4, 4, 4, 4);
+        m_zlrUhfOut = new QTextEdit;
+        m_zlrUhfOut->setObjectName("zlrOut");
+        m_zlrUhfOut->setReadOnly(true);
+        m_zlrUhfOut->setFont(QFont("Menlo", 10));
+        outL->addWidget(m_zlrUhfOut);
+        ioUhfRow->addWidget(outBox, 2);
+
+        l->addLayout(ioUhfRow, 1);
+
+        m_zlrTabs->addTab(w, tr("UHF"));
+    }
+
+    // ---------- AM Tab (FC=0x0C) ----------
+    {
+        auto *w = new QWidget;
+        auto *l = new QVBoxLayout(w);
+        l->setContentsMargins(8, 8, 8, 8);
+        l->setSpacing(6);
+
+        // 配置项 (10 项, 2 行 x 5 列对称网格)
+        auto mkLine = [](const QString &label, const QString &def) {
+            auto *box = new QWidget;
+            auto *hb = new QHBoxLayout(box);
+            hb->setContentsMargins(0, 0, 0, 0);
+            hb->addWidget(new QLabel(label));
+            auto *le = new QLineEdit(def);
+            le->setMaximumWidth(44);
+            le->setAlignment(Qt::AlignCenter);
+            le->setFont(QFont("Menlo", 10));
+            hb->addWidget(le);
+            return QPair<QWidget*, QLineEdit*>{box, le};
+        };
+        auto t0 = mkLine("thr", "10");   m_zlrAmThr = t0.second;
+        auto t1 = mkLine("hit", "5");    m_zlrAmHit = t1.second;
+        auto t2 = mkLine("freq", "0");   m_zlrAmFreq = t2.second;
+        auto t3 = mkLine("delay", "0");  m_zlrAmDelay = t3.second;
+        auto t4 = mkLine("len", "0");    m_zlrAmLen = t4.second;
+        auto t5 = mkLine("inv", "0");    m_zlrAmInvert = t5.second;
+        auto t6 = mkLine("sync", "0");   m_zlrAmSync = t6.second;
+        auto t7 = mkLine("volt", "1");   m_zlrAmVolt = t7.second;
+        auto t8 = mkLine("mode", "0");   m_zlrAmMode = t8.second;
+        auto t9 = mkLine("mains", "0");  m_zlrAmMains = t9.second;
+
+        // ===== 第一行: 配置区 / 监控区 二等分 =====
+        auto *row1 = new QHBoxLayout;
+        row1->setSpacing(8);
+
+        // ---- 配置区 (边框"配置"): 10 参数网格 + 读/写配置 ----
+        auto *cfgBox = new QGroupBox(tr("配置"));
+        cfgBox->setObjectName("zlrMotorGroup");
+        auto *cfgL = new QVBoxLayout(cfgBox);
+        cfgL->setContentsMargins(8, 6, 8, 6);
+        auto *cfgGrid = new QGridLayout;
+        cfgGrid->setHorizontalSpacing(10);
+        cfgGrid->setVerticalSpacing(4);
+        cfgGrid->setContentsMargins(0, 0, 0, 0);
+        cfgGrid->addWidget(t0.first, 0, 0); cfgGrid->addWidget(t1.first, 0, 1);
+        cfgGrid->addWidget(t2.first, 0, 2); cfgGrid->addWidget(t3.first, 0, 3);
+        cfgGrid->addWidget(t4.first, 0, 4);
+        cfgGrid->addWidget(t5.first, 1, 0); cfgGrid->addWidget(t6.first, 1, 1);
+        cfgGrid->addWidget(t7.first, 1, 2); cfgGrid->addWidget(t8.first, 1, 3);
+        cfgGrid->addWidget(t9.first, 1, 4);
+        cfgL->addLayout(cfgGrid);
+        auto *cfgBtnRow = new QHBoxLayout; cfgBtnRow->setSpacing(6);
+        m_zlrAmGetBtn = new QPushButton(tr("读配置")); m_zlrAmGetBtn->setObjectName("zlrUhfBtn");
+        connect(m_zlrAmGetBtn, &QPushButton::clicked, this, &MainWindow::onAmGetConfig);
+        cfgBtnRow->addWidget(m_zlrAmGetBtn, 1);
+        m_zlrAmSetBtn = new QPushButton(tr("写配置")); m_zlrAmSetBtn->setObjectName("zlrAmMain");
+        connect(m_zlrAmSetBtn, &QPushButton::clicked, this, &MainWindow::onAmSetConfig);
+        cfgBtnRow->addWidget(m_zlrAmSetBtn, 1);
+        cfgL->addLayout(cfgBtnRow);
+        row1->addWidget(cfgBox, 2);
+
+        // ---- 监控区 (边框"监控"): 查询/监控状态/切模式 + 波形采集 ----
+        auto *monBox = new QGroupBox(tr("监控"));
+        monBox->setObjectName("zlrMotorGroup");
+        auto *monL = new QVBoxLayout(monBox);
+        monL->setContentsMargins(8, 6, 8, 6);
+        monL->setSpacing(4);
+        auto *m1 = new QHBoxLayout; m1->setSpacing(6);
+        m_zlrAmQueryBtn = new QPushButton(tr("查询")); m_zlrAmQueryBtn->setObjectName("zlrUhfBtn");
+        connect(m_zlrAmQueryBtn, &QPushButton::clicked, this, &MainWindow::onAmQuery);
+        m1->addWidget(m_zlrAmQueryBtn, 1);
+        m_zlrAmStatusBtn = new QPushButton(tr("监控状态")); m_zlrAmStatusBtn->setObjectName("zlrUhfBtn");
+        m_zlrAmStatusBtn->setToolTip(tr("AM 监控: 链路 + 事件累计 + 最近事件ms"));
+        connect(m_zlrAmStatusBtn, &QPushButton::clicked, this, &MainWindow::onAmGetStatus);
+        m1->addWidget(m_zlrAmStatusBtn, 1);
+        m_zlrAmSetModeBtn = new QPushButton(tr("切模式")); m_zlrAmSetModeBtn->setObjectName("zlrUhfBtn");
+        m_zlrAmSetModeBtn->setToolTip(tr("仅切工作模式 (mode 输入)"));
+        connect(m_zlrAmSetModeBtn, &QPushButton::clicked, this, &MainWindow::onAmSetMode);
+        m1->addWidget(m_zlrAmSetModeBtn, 1);
+        monL->addLayout(m1);
+        auto *w1 = new QHBoxLayout; w1->setSpacing(6);
+        m_zlrAmWaveBtn = new QPushButton(tr("波形采集")); m_zlrAmWaveBtn->setObjectName("zlrAmMain");
+        m_zlrAmWaveBtn->setToolTip(tr("触发一次同步波形采集 (阻塞~1s), 400点/周期"));
+        connect(m_zlrAmWaveBtn, &QPushButton::clicked, this, &MainWindow::onAmGetWave);
+        w1->addWidget(m_zlrAmWaveBtn, 2);
+        w1->addWidget(new QLabel(tr("页:")));
+        m_zlrAmWavePage = new QSpinBox; m_zlrAmWavePage->setRange(0, 9); m_zlrAmWavePage->setValue(0);
+        m_zlrAmWavePage->setToolTip(tr("波形页 (48点/页, 400点≈9页)"));
+        w1->addWidget(m_zlrAmWavePage, 1);
+        m_zlrAmWavePageBtn = new QPushButton(tr("取波形页")); m_zlrAmWavePageBtn->setObjectName("zlrUhfBtn");
+        connect(m_zlrAmWavePageBtn, &QPushButton::clicked, this, &MainWindow::onAmGetWavePage);
+        w1->addWidget(m_zlrAmWavePageBtn, 1);
+        monL->addLayout(w1);
+        row1->addWidget(monBox, 1);
+
+        l->addLayout(row1);
+
+        // 波形输出区 (AM 输出区下方)
+        auto *waveBox = new QGroupBox(tr("波形"));
+        waveBox->setObjectName("zlrOutBox");
+        auto *waveL = new QVBoxLayout(waveBox);
+        waveL->setContentsMargins(4, 4, 4, 4);
+        m_zlrAmWaveOut = new QTextEdit;
+        m_zlrAmWaveOut->setObjectName("zlrOut");
+        m_zlrAmWaveOut->setReadOnly(true);
+        m_zlrAmWaveOut->setFont(QFont("Menlo", 10));
+        waveL->addWidget(m_zlrAmWaveOut);
+        l->addWidget(waveBox, 1);
+
+        // 输出区
+        auto *outBox = new QGroupBox(tr("输出区"));
+        outBox->setObjectName("zlrOutBox");
+        auto *outL = new QVBoxLayout(outBox);
+        outL->setContentsMargins(4, 4, 4, 4);
+        m_zlrAmOut = new QTextEdit;
+        m_zlrAmOut->setObjectName("zlrOut");
+        m_zlrAmOut->setReadOnly(true);
+        m_zlrAmOut->setFont(QFont("Menlo", 10));
+        outL->addWidget(m_zlrAmOut);
+        l->addWidget(outBox, 1);
+
+        m_zlrTabs->addTab(w, tr("AM"));
+    }
+
+    // ---------- 开锁器 Tab (FC=0x0D) ----------
+    {
+        auto *w = new QWidget;
+        auto *l = new QVBoxLayout(w);
+        l->setContentsMargins(8, 8, 8, 8);
+        l->setSpacing(8);
+
+        // ===== 第一行: 清单区 / 操作区 二等分 =====
+        auto *row1 = new QHBoxLayout;
+        row1->setSpacing(8);
+
+        // ---- 清单区 (边框"清单"): 软标总数 + 硬标EPC + 配置/追加 ----
+        auto *lstBox = new QGroupBox(tr("清单"));
+        lstBox->setObjectName("zlrMotorGroup");
+        auto *lstL = new QVBoxLayout(lstBox);
+        lstL->setContentsMargins(8, 6, 8, 6);
+        lstL->setSpacing(4);
+        auto *scRow = new QHBoxLayout; scRow->setSpacing(6);
+        scRow->addWidget(new QLabel(tr("软标总数:")));
+        m_zlrLockerSoftCnt = new QSpinBox; m_zlrLockerSoftCnt->setRange(0, 65535); m_zlrLockerSoftCnt->setValue(1);
+        scRow->addWidget(m_zlrLockerSoftCnt, 1);
+        lstL->addLayout(scRow);
+        auto *epcRow = new QHBoxLayout; epcRow->setSpacing(6);
+        epcRow->addWidget(new QLabel(tr("硬标签EPC:")));
+        m_zlrLockerHardEpc = new QLineEdit; m_zlrLockerHardEpc->setMaxLength(24);
+        m_zlrLockerHardEpc->setPlaceholderText("hex"); m_zlrLockerHardEpc->setFont(QFont("Menlo", 10));
+        epcRow->addWidget(m_zlrLockerHardEpc, 1);
+        lstL->addLayout(epcRow);
+        auto *lstBtnRow = new QHBoxLayout; lstBtnRow->setSpacing(6);
+        m_zlrLockerCfgBtn = new QPushButton(tr("配置清单")); m_zlrLockerCfgBtn->setObjectName("zlrUhfBtn");
+        connect(m_zlrLockerCfgBtn, &QPushButton::clicked, this, &MainWindow::onLockerConfigure);
+        lstBtnRow->addWidget(m_zlrLockerCfgBtn, 1);
+        m_zlrLockerAddBtn = new QPushButton(tr("追加硬标")); m_zlrLockerAddBtn->setObjectName("zlrUhfBtn");
+        connect(m_zlrLockerAddBtn, &QPushButton::clicked, this, &MainWindow::onLockerAdd);
+        lstBtnRow->addWidget(m_zlrLockerAddBtn, 1);
+        lstL->addLayout(lstBtnRow);
+        row1->addWidget(lstBox, 1);
+
+        // ---- 操作区 (边框"操作"): 开始/取消/查询/取事件 ----
+        auto *opBox = new QGroupBox(tr("操作"));
+        opBox->setObjectName("zlrMotorGroup");
+        auto *opL = new QVBoxLayout(opBox);
+        opL->setContentsMargins(8, 6, 8, 6);
+        opL->setSpacing(4);
+        auto *o1 = new QHBoxLayout; o1->setSpacing(6);
+        m_zlrLockerStartBtn = new QPushButton(tr("开始")); m_zlrLockerStartBtn->setObjectName("zlrAmMain");
+        connect(m_zlrLockerStartBtn, &QPushButton::clicked, this, &MainWindow::onLockerStart);
+        o1->addWidget(m_zlrLockerStartBtn, 1);
+        m_zlrLockerCancelBtn = new QPushButton(tr("取消")); m_zlrLockerCancelBtn->setObjectName("zlrUhfBtn");
+        connect(m_zlrLockerCancelBtn, &QPushButton::clicked, this, &MainWindow::onLockerCancel);
+        o1->addWidget(m_zlrLockerCancelBtn, 1);
+        opL->addLayout(o1);
+        auto *o2 = new QHBoxLayout; o2->setSpacing(6);
+        m_zlrLockerQueryBtn = new QPushButton(tr("查询")); m_zlrLockerQueryBtn->setObjectName("zlrUhfBtn");
+        connect(m_zlrLockerQueryBtn, &QPushButton::clicked, this, &MainWindow::onLockerQuery);
+        o2->addWidget(m_zlrLockerQueryBtn, 1);
+        m_zlrLockerEvtBtn = new QPushButton(tr("取事件")); m_zlrLockerEvtBtn->setObjectName("zlrUhfBtn");
+        connect(m_zlrLockerEvtBtn, &QPushButton::clicked, this, &MainWindow::onLockerGetEvent);
+        o2->addWidget(m_zlrLockerEvtBtn, 1);
+        opL->addLayout(o2);
+        row1->addWidget(opBox, 1);
+
+        l->addLayout(row1);
+
+        // 输出区
+        auto *outBox = new QGroupBox(tr("输出区"));
+        outBox->setObjectName("zlrOutBox");
+        auto *outL = new QVBoxLayout(outBox);
+        outL->setContentsMargins(4, 4, 4, 4);
+        m_zlrLockerOut = new QTextEdit;
+        m_zlrLockerOut->setObjectName("zlrOut");
+        m_zlrLockerOut->setReadOnly(true);
+        m_zlrLockerOut->setFont(QFont("Menlo", 10));
+        outL->addWidget(m_zlrLockerOut);
+        l->addWidget(outBox, 1);
+
+        m_zlrTabs->addTab(w, tr("开锁器"));
+    }
+
+    zlrOuterLayout->addWidget(m_zlrTabs);
+    m_zlrBox->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+    m_zlrTabs->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+
+    mainLayout->addWidget(m_zlrBox);
+
+    // 注: 自动扫描(SCAN_START)不主动上报, 标签持续入缓冲由 GET_TAGS 拉取, 无需异步推送轮询.
+
     // ===== 通信调试面板 (功能栏下方独立区域，默认隐藏) =====
     m_debugPanel = new QFrame;
     m_debugPanel->setObjectName("debugPanel");
@@ -1045,6 +1771,43 @@ void MainWindow::applyStylesheet()
         QPushButton#sccdBtn15693, QPushButton#sccdBtn14443A, QPushButton#sccdBtn14443B { background: #e0d4f0; color: #503070; padding: 4px 12px; }
         QPushButton#sccdBtn15693:hover, QPushButton#sccdBtn14443A:hover, QPushButton#sccdBtn14443B:hover { background: #d0c0e8; }
         QPushButton#sccdBtn15693:checked, QPushButton#sccdBtn14443A:checked, QPushButton#sccdBtn14443B:checked { background: #7830b0; color: #f0eaf8; }
+        /* ZLR5401 区域 */
+        QGroupBox#zlrBox { border: 1px solid #b090d0; border-radius: 6px; margin-top: 10px; padding-top: 12px; }
+        QPushButton#zlrBtn { background: #3080b0; color: #fff; font-weight: bold; padding: 8px 12px; }
+        QPushButton#zlrBtn:hover { background: #4090c0; }
+        QPushButton#zlrBtn:disabled { background: #e8e0f4; color: #b0a0c0; }
+        QPushButton#zlrBtn[active="true"] { background: #50a050; color: #fff; }
+        QPushButton#zlrBtn[active="true"]:hover { background: #60b060; }
+        QPushButton#zlrMotorBtn, QPushButton#zlrUhfBtn { background: #a080c0; color: #fff; padding: 4px 10px; font-size: 0.85em; }
+        QPushButton#zlrMotorBtn:hover, QPushButton#zlrUhfBtn:hover { background: #b090d0; }
+        QPushButton#zlrMotorBtn:disabled, QPushButton#zlrUhfBtn:disabled { background: #e8e0f4; color: #b0a0c0; }
+        QPushButton#zlrMotorMain { background: #c05050; color: #fff; font-weight: bold; padding: 5px 12px; }
+        QPushButton#zlrMotorMain:hover { background: #d06060; }
+        QPushButton#zlrMotorMain:disabled { background: #e8e0f4; color: #b0a0c0; }
+        /* 电机停止: 警示橙色 (区别于正转/反转的红/绿, 危险动作强调) */
+        QPushButton#zlrMotorStop { background: #e07800; color: #fff; font-weight: bold; padding: 5px 14px; }
+        QPushButton#zlrMotorStop:hover { background: #f08810; }
+        QPushButton#zlrMotorStop:disabled { background: #e8e0f4; color: #b0a0c0; }
+        /* 电机分区 GroupBox */
+        QGroupBox#zlrMotorGroup { border: 1px solid #b090d0; border-radius: 6px; margin-top: 8px; padding-top: 8px; }
+        QGroupBox#zlrMotorGroup::title { subcontrol-origin: margin; left: 10px; font-size: 0.95em; }
+        /* 自检错误位/诊断标签 */
+        QLabel#zlrSelfErrBitsLabel { background: #ffffff; border: 1px solid #c8b8e0; border-radius: 4px; padding: 6px; }
+        QLabel#zlrSelfDiagLabel { background: #f8f4ff; border: 1px solid #d8c8f0; border-radius: 4px; padding: 4px; }
+        QPushButton#zlrUhfMain { background: #c08030; color: #fff; font-weight: bold; padding: 5px 12px; }
+        QPushButton#zlrUhfMain:hover { background: #d09040; }
+        QPushButton#zlrUhfMain:disabled { background: #e8e0f4; color: #b0a0c0; }
+        QPushButton#zlrAmMain { background: #508050; color: #fff; font-weight: bold; padding: 5px 12px; }
+        QPushButton#zlrAmMain:hover { background: #609060; }
+        QPushButton#zlrAmMain:disabled { background: #e8e0f4; color: #b0a0c0; }
+        QTableWidget#zlrTagTable {
+            background: #ffffff; color: #2a2438; border: 1px solid #c8b8e0;
+            gridline-color: #d8c8f0; selection-background-color: #d0c0e8; selection-color: #2a2438;
+            alternate-background-color: #f6f2fb;
+        }
+        QTableWidget#zlrTagTable QHeaderView::section {
+            background: #d8c8f0; color: #4a2a7a; border: none; padding: 3px 6px; font-weight: bold;
+        }
         QPushButton#15693InventoryBtn, QPushButton#15693ReadBtn, QPushButton#15693WriteBtn,
         QPushButton#15693LockBtn, QPushButton#15693StayQuietBtn,
         QPushButton#15693DsfidBtn, QPushButton#15693EasBtn,
@@ -1456,6 +2219,12 @@ m_rxBuffer.clear();
                 m_verAddrEdit->setText(QString("0x%1").arg(hex2(addr)).toUpper());
                 m_verSwEdit->setText(QString("SW:%1").arg(sw));
                 m_verHwEdit->setText(QString("HW:%1").arg(hw));
+                // 设备型号 → 标记到 ZLR5401 区域 (SW 以 "ZLR" 开头判定为 ZLR5401 设备)
+                if (sw.toUpper().startsWith("ZLR")) {
+                    if (m_zlrBox) m_zlrBox->setTitle(tr("ZLR5401 Area — %1").arg(sw));
+                    if (m_zlrBtn) m_zlrBtn->setToolTip(
+                        tr("检测到 ZLR5401 (%1): 电机 / UHF / AM / 开锁器 / RGB").arg(sw));
+                }
                 appendLog("[SYS][RX]", m_rxBuffer, QColor("#30b078"),
                           QString("OK Addr=0x%1 HW=%2 SW=%3").arg(hex2(addr)).arg(hw, sw));
             } else {
@@ -1553,6 +2322,1034 @@ void MainWindow::onSccdToggle(bool checked)
     else
         statusBar()->showMessage(tr("Sccd Area 已隐藏"), 2000);
 }
+
+void MainWindow::onZlrToggle(bool checked)
+{
+    // 切换 ZLR5401 Area 显示/隐藏 + 切换 ZLR5401 按钮底色 (参照 onSccdToggle)
+    m_zlrBox->setVisible(checked);
+    m_zlrBtn->setProperty("active", checked);
+    m_zlrBtn->style()->unpolish(m_zlrBtn);
+    m_zlrBtn->style()->polish(m_zlrBtn);
+    if (checked)
+        statusBar()->showMessage(tr("ZLR5401 Area 已展开"), 2000);
+    else
+        statusBar()->showMessage(tr("ZLR5401 Area 已隐藏"), 2000);
+}
+
+// ===== ZLR5401 通用子命令收发 =====
+// 打包 [cmd][argData] → makeFrame(fc, subCmd+argData) → 发 → 等响应 → 校验 func==fc^0xFF
+//   → data[0]==subCmd → 打印 data[1] err (0=OK) → outPayload=data.mid(2)
+bool MainWindow::sendZlrSubCmd(quint8 fc, quint8 subCmd, const QByteArray &argData,
+                               QByteArray *outPayload, QString *outErrNote, int timeoutMs)
+{
+    if (!m_transport || !m_transport->isOpen()) {
+        if (outErrNote) *outErrNote = "请先打开通信接口";
+        return false;
+    }
+    QByteArray data;
+    data.append(static_cast<char>(subCmd));
+    data.append(argData);
+    QByteArray req = m_parser->makeFrame(m_deviceAddr, fc, data);
+
+    m_rxBuffer.clear();
+    m_transport->writeData(req);
+    m_transport->waitForBytesWritten(5000);
+    appendLog("[SYS][TX]", req, QColor("#c050a0"),
+              QString("ZLR FC=0x%1 sub=0x%2 请求").arg(hex2(fc)).arg(hex2(subCmd)));
+
+    if (!waitForResponse(3000)) {
+        if (outErrNote) *outErrNote = QString("超时 3s 无响应 (rxBuf=%1字节)").arg(m_rxBuffer.size());
+        return false;
+    }
+    FrameData frame = m_parser->parseFrame(m_rxBuffer);
+    if (!frame.valid) {
+        if (outErrNote) *outErrNote = QString("帧解析失败: %1").arg(frame.error);
+        return false;
+    }
+    if (frame.fc != (fc ^ 0xFF)) {
+        if (outErrNote) *outErrNote = QString("FC=0x%1 (期望 0x%2)")
+                                          .arg(hex2(frame.fc)).arg(hex2(fc ^ 0xFF));
+        return false;
+    }
+    if (frame.data.size() < 2 || static_cast<quint8>(frame.data[0]) != subCmd) {
+        if (outErrNote) *outErrNote = QString("响应 subCmd=0x%1 (期望 0x%2)")
+                                          .arg(frame.data.isEmpty() ? QString("-") : hex2(frame.data[0]))
+                                          .arg(hex2(subCmd));
+        return false;
+    }
+    quint8 err = static_cast<quint8>(frame.data[1]);
+    appendLog("[SYS][RX]", m_rxBuffer, QColor("#30b078"),
+              QString("ZLR FC=0x%1 sub=0x%2 err=%3 (%4)")
+                  .arg(hex2(fc)).arg(hex2(subCmd)).arg(hex2(err))
+                  .arg(err == 0 ? "OK" : QString("0x%1").arg(hex2(err))));
+    if (err != 0) {
+        if (outErrNote) *outErrNote = QString("失败 err=0x%1").arg(hex2(err));
+        return false;
+    }
+    if (outPayload) *outPayload = frame.data.mid(2);
+    return true;
+}
+
+// 电机 MOVE 公共流程: 先设速度/转矩(可选) → 发 MOVE
+//   dir: 0=正转(CW) 1=反转(CCW). 角度 0=持续运行(steps=0)
+void MainWindow::onMotorMoveCw() { onMotorMove(0); }
+void MainWindow::onMotorMoveCcw() { onMotorMove(1); }
+void MainWindow::onMotorMove(int dir)
+{
+    if (!m_transport || !m_transport->isOpen()) {
+        appendSystemLog("电机: 请先连接", QColor("#c050a0"));
+        return;
+    }
+    // 1) 先下发 SPEED (速度微步/s, 16bit LE)
+    if (m_zlrMotorSpeed) {
+        quint16 hz = static_cast<quint16>(m_zlrMotorSpeed->value());
+        QByteArray arg;
+        arg.append(static_cast<char>(hz & 0xFF));
+        arg.append(static_cast<char>((hz >> 8) & 0xFF));
+        QString err;
+        if (!sendZlrSubCmd(0x0A, 0x03, arg, nullptr, &err))
+            appendSystemLog(QString("电机 设速度失败: %1").arg(err), QColor("#d08020"));
+    }
+    // 2) 角度 → 微步 (0=持续运行)
+    quint32 steps = 0;
+    if (m_zlrMotorAngle && m_zlrMotorAngle->value() > 0) {
+        quint32 stepsPerRev = m_zlrMotorSteps ? static_cast<quint32>(m_zlrMotorSteps->value()) : 3200;
+        double frac = m_zlrMotorAngle->value() / 360.0;
+        steps = static_cast<quint32>(frac * static_cast<double>(stepsPerRev) + 0.5);
+        if (steps == 0) steps = 1; // 极小角度至少走 1 微步
+        if (steps > 0xFFFFFF) {    // MOVE steps 为 24bit, 超限封顶并提示
+            steps = 0xFFFFFF;
+            appendSystemLog("电机: 微步数超过 24bit 上限, 已封顶为 0xFFFFFF", QColor("#d08020"));
+        }
+    }
+    // 3) MOVE [dir, steps 24bit LE]
+    QByteArray arg;
+    arg.append(static_cast<char>(dir));
+    arg.append(static_cast<char>(steps & 0xFF));
+    arg.append(static_cast<char>((steps >> 8) & 0xFF));
+    arg.append(static_cast<char>((steps >> 16) & 0xFF));
+    QString err;
+    if (sendZlrSubCmd(0x0A, 0x01, arg, nullptr, &err)) {
+        // steps=0 表示持续运行, 否则按步/转 换算实际圈数与角度闭环
+        int spr = m_zlrMotorSteps ? m_zlrMotorSteps->value() : 400;
+        QString info = (steps == 0)
+            ? QString("电机: %1 开始 (持续运行)").arg(dir == 0 ? "正转" : "反转")
+            : QString("电机: %1 开始, %2微步 (设定 %3° → 实际 %4°)")
+                  .arg(dir == 0 ? "正转" : "反转")
+                  .arg(steps)
+                  .arg(m_zlrMotorAngle->value())
+                  .arg(qRound(steps * 360.0 / static_cast<double>(spr)));
+        appendSystemLog(info, QColor("#50a050"));
+    } else {
+        appendSystemLog(QString("电机 启动失败: %1").arg(err), QColor("#c050a0"));
+    }
+}
+
+void MainWindow::onMotorStop()
+{
+    QString err;
+    if (sendZlrSubCmd(0x0A, 0x02, QByteArray(), nullptr, &err))
+        appendSystemLog("电机: 已停止", QColor("#50a050"));
+    else
+        appendSystemLog(QString("电机 停止失败: %1").arg(err), QColor("#c050a0"));
+}
+
+void MainWindow::onMotorSpeed()
+{
+    if (!m_zlrMotorSpeed) return;
+    quint16 hz = static_cast<quint16>(m_zlrMotorSpeed->value());
+    QByteArray arg;
+    arg.append(static_cast<char>(hz & 0xFF));
+    arg.append(static_cast<char>((hz >> 8) & 0xFF));
+    QString err;
+    if (sendZlrSubCmd(0x0A, 0x03, arg, nullptr, &err))
+        appendSystemLog(QString("电机: 速度已设 %1 微步/s").arg(hz), QColor("#50a050"));
+    else
+        appendSystemLog(QString("电机 设速度失败: %1").arg(err), QColor("#c050a0"));
+}
+
+void MainWindow::onMotorTorque()
+{
+    if (!m_zlrMotorTorque) return;
+    QByteArray arg;
+    arg.append(static_cast<char>(m_zlrMotorTorque->value()));
+    QString err;
+    if (sendZlrSubCmd(0x0A, 0x04, arg, nullptr, &err))
+        appendSystemLog(QString("电机: 转矩已设 %1%%").arg(m_zlrMotorTorque->value()), QColor("#50a050"));
+    else
+        appendSystemLog(QString("电机 设转矩失败: %1").arg(err), QColor("#c050a0"));
+}
+
+void MainWindow::onMotorQuery()
+{
+    QByteArray payload;
+    QString err;
+    if (!sendZlrSubCmd(0x0A, 0x05, QByteArray(), &payload, &err)) {
+        appendSystemLog(QString("电机 查询失败: %1").arg(err), QColor("#c050a0"));
+        return;
+    }
+    // payload: [state, fault, diag1, diag2, stepsDoneL, stepsDoneH]
+    QStringList info;
+    if (payload.size() >= 6) {
+        quint8 st = static_cast<quint8>(payload[0]);
+        quint8 flt = static_cast<quint8>(payload[1]);
+        quint8 d1 = static_cast<quint8>(payload[2]);
+        quint8 d2 = static_cast<quint8>(payload[3]);
+        quint16 done = static_cast<quint8>(payload[4]) | (static_cast<quint8>(payload[5]) << 8);
+        // 协议 §10.2 语义由 testState 决定, 上位机只显示状态码值, 详细解读由日志与协议共同负责
+        info << QString("state=%1(%2)").arg(st).arg(st == 0 ? "IDLE" : st == 1 ? "RUN" : "FAULT");
+        info << QString("fault=0x%1").arg(flt, 2, 16, QChar('0'));
+        info << QString("diag1=0x%1 diag2=0x%2").arg(d1, 2, 16, QChar('0')).arg(d2, 2, 16, QChar('0'));
+        info << QString("stepsDone=%1").arg(done);
+    } else {
+        info << QString("payload=%1B").arg(payload.size());
+    }
+    // 状态显示已移除 (Round026追加), 结果渲染到输出区
+    if (m_zlrMotorOut) m_zlrMotorOut->append(info.join("  "));
+    appendSystemLog(QString("电机 状态: %1").arg(info.join("  ")), QColor("#50a050"));
+}
+
+void MainWindow::onMotorClear()
+{
+    QString err;
+    if (sendZlrSubCmd(0x0A, 0x06, QByteArray(), nullptr, &err))
+        appendSystemLog("电机: 已清除故障", QColor("#50a050"));
+    else
+        appendSystemLog(QString("电机 清除故障失败: %1").arg(err), QColor("#c050a0"));
+}
+
+void MainWindow::onMotorTest()
+{
+    // TEST: [passes]; 进行中再下发回 MOTOR_ERR_BUSY(3)
+    quint8 passes = m_zlrMotorTestPasses ? static_cast<quint8>(m_zlrMotorTestPasses->value()) : 1;
+    QByteArray arg;
+    arg.append(static_cast<char>(passes));
+    QString err;
+    if (sendZlrSubCmd(0x0A, 0x07, arg, nullptr, &err))
+        appendSystemLog(QString("电机: 行程测试已启动 (%1次往返)").arg(passes), QColor("#50a050"));
+    else
+        appendSystemLog(QString("电机 行程测试失败: %1 (进行中会返回 BUSY)").arg(err), QColor("#c050a0"));
+}
+
+// HEALTH: [err, olovState, threshL,threshH(2B LE), trqL,trqH(2B LE), reason]
+void MainWindow::onMotorHealth()
+{
+    QByteArray payload;
+    QString err;
+    if (!sendZlrSubCmd(0x0A, 0x08, QByteArray(), &payload, &err)) {
+        appendSystemLog(QString("电机 健康查询失败: %1").arg(err), QColor("#c050a0"));
+        return;
+    }
+    QStringList v;
+    if (payload.size() >= 6) {
+        quint8 olov = static_cast<quint8>(payload[0]);
+        quint16 thresh = static_cast<quint8>(payload[1]) | (static_cast<quint8>(payload[2]) << 8);
+        quint16 trq = static_cast<quint8>(payload[3]) | (static_cast<quint8>(payload[4]) << 8);
+        quint8 reason = static_cast<quint8>(payload[5]);
+        static const char *olovName[] = {"正常","持续高负载","已自动降速","高负载停机"};
+        static const char *reasonName[] = {"无","正常停止","运行时限","高负载停机","DRV故障"};
+        v << QString("高负载=%1(%2)").arg(olov).arg(olov <= 3 ? olovName[olov] : "?");
+        v << QString("阈值=%1").arg(thresh);
+        v << QString("转矩=%1(%2)").arg(trq).arg(trq > 3000 ? "≈无负载" : trq > 1500 ? "正常" : trq > 0 ? "偏重" : "极重/失速");
+        v << QString("停机原因=%1").arg(reason <= 4 ? reasonName[reason] : QString("0x%1").arg(hex2(reason)));
+    } else v << QString("payload=%1B").arg(payload.size());
+    if (m_zlrMotorOut) m_zlrMotorOut->append(v.join("  "));
+    appendSystemLog(QString("电机 健康: %1").arg(v.join("  ")), QColor("#50a050"));
+}
+
+// STATS: [err, runSeconds(3B LE), startCount(2B LE), lastReason]
+void MainWindow::onMotorStats()
+{
+    QByteArray payload;
+    QString err;
+    if (!sendZlrSubCmd(0x0A, 0x09, QByteArray(), &payload, &err)) {
+        appendSystemLog(QString("电机 统计查询失败: %1").arg(err), QColor("#c050a0"));
+        return;
+    }
+    QStringList v;
+    if (payload.size() >= 6) {
+        quint32 secs = static_cast<quint8>(payload[0]) | (static_cast<quint8>(payload[1]) << 8)
+                     | (static_cast<quint8>(payload[2]) << 16);
+        quint16 starts = static_cast<quint8>(payload[3]) | (static_cast<quint8>(payload[4]) << 8);
+        quint8 reason = static_cast<quint8>(payload[5]);
+        static const char *reasonName[] = {"无","正常停止","运行时限","高负载停机","DRV故障"};
+        v << QString("累计运行=%1s (%2h%3m)").arg(secs).arg(secs / 3600).arg((secs % 3600) / 60);
+        v << QString("启动=%1次").arg(starts);
+        v << QString("最近停止=%1").arg(reason <= 4 ? reasonName[reason] : QString("0x%1").arg(hex2(reason)));
+    } else v << QString("payload=%1B").arg(payload.size());
+    if (m_zlrMotorOut) m_zlrMotorOut->append(v.join("  "));
+    appendSystemLog(QString("电机 统计: %1").arg(v.join("  ")), QColor("#50a050"));
+}
+
+// ===== UHF (FC=0x0B) =====
+void MainWindow::onUhfOpen()
+{
+    QString err;
+    if (sendZlrSubCmd(0x0B, 0x01, QByteArray(), nullptr, &err))
+        appendSystemLog("UHF: 已开启 (READY)", QColor("#50a050"));
+    else
+        appendSystemLog(QString("UHF 开启失败: %1").arg(err), QColor("#c050a0"));
+}
+
+void MainWindow::onUhfClose()
+{
+    QString err;
+    if (sendZlrSubCmd(0x0B, 0x02, QByteArray(), nullptr, &err))
+        appendSystemLog("UHF: 已关闭", QColor("#50a050"));
+    else
+        appendSystemLog(QString("UHF 关闭失败: %1").arg(err), QColor("#c050a0"));
+}
+
+void MainWindow::onUhfInventory()
+{
+    // INVENTORY 同步阻塞: 请求带 timeout(ms, 缺省1000), 标签内联在响应带回 [err, countL,H, (rssi, epcLen, epc..)...]
+    QByteArray arg;
+    int timeout = m_zlrUhfCycle ? m_zlrUhfCycle->value() : 1000;
+    arg.append(static_cast<char>(timeout & 0xFF));
+    arg.append(static_cast<char>((timeout >> 8) & 0xFF));
+    QByteArray payload;
+    QString err;
+    if (!sendZlrSubCmd(0x0B, 0x03, arg, &payload, &err)) {
+        // err=0x05 (NO_TAG) 属于正常"无标签", 单独友好提示
+        if (err.contains("0x05"))
+            appendSystemLog("UHF 盘点: 场内无标签", QColor("#d08020"));
+        else
+            appendSystemLog(QString("UHF 盘点失败: %1").arg(err), QColor("#c050a0"));
+        return;
+    }
+    // payload: [count L, count H, (rssi, epcLen, epc..)...]
+    QStringList rows;
+    int dropped = 0;
+    QSet<QString> seen;
+    if (payload.size() >= 2) {
+        int count = static_cast<quint8>(payload[0]) | (static_cast<quint8>(payload[1]) << 8);
+        int i = 2;
+        int idx = 0;
+        while (i + 2 <= payload.size() && idx < count) {
+            quint8 rssi = static_cast<quint8>(payload[i]);
+            int epcLen = static_cast<quint8>(payload[i + 1]);
+            i += 2;
+            if (i + epcLen > payload.size()) break;
+            QByteArray epc = payload.mid(i, epcLen);
+            i += epcLen;
+            QString e = QString::fromLatin1(epc.toHex()).toUpper();
+            if (seen.contains(e)) { ++dropped; continue; }
+            seen.insert(e);
+            rows << QString("%1|%2|%3").arg(e).arg(rssi).arg(++idx);
+        }
+    }
+    if (m_zlrUhfTagTable) {
+        m_zlrUhfTagTable->setRowCount(rows.size());
+        for (int r = 0; r < rows.size(); ++r) {
+            QStringList c = rows[r].split('|');
+            for (int col = 0; col < 3 && col < c.size(); ++col)
+                m_zlrUhfTagTable->setItem(r, col, new QTableWidgetItem(c[col]));
+        }
+        if (rows.isEmpty()) m_zlrUhfTagTable->setRowCount(0);
+    }
+    appendSystemLog(QString("UHF 盘点完成: 带回%1标签 (去重%2, 表格%3行)")
+                        .arg(payload.size() >= 2 ? QString::number(static_cast<quint8>(payload[0]) | (static_cast<quint8>(payload[1]) << 8)) : "?")
+                        .arg(dropped).arg(rows.size()),
+                    QColor("#50a050"));
+}
+
+void MainWindow::onUhfQuery()
+{
+    QByteArray payload;
+    QString err;
+    if (!sendZlrSubCmd(0x0B, 0x07, QByteArray(), &payload, &err)) {
+        appendSystemLog(QString("UHF 查询失败: %1").arg(err), QColor("#c050a0"));
+        return;
+    }
+    // payload: [state, link, totalTags]
+    QStringList info;
+    if (payload.size() >= 3) {
+        quint8 st = static_cast<quint8>(payload[0]);
+        quint8 link = static_cast<quint8>(payload[1]);
+        quint8 total = static_cast<quint8>(payload[2]);
+        static const char *stName[] = {"IDLE","READY","INVENTORY","READ","WRITE","ERROR","ANT_CHECK","GETBUF"};
+        info << QString("state=%1(%2)").arg(st).arg(st <= 7 ? stName[st] : "?");
+        info << QString("link=%1").arg(link == 0 ? "正常" : link == 1 ? "超时" : "CRC错");
+        info << QString("totalTags=%1").arg(total);
+    } else {
+        info << QString("payload=%1B").arg(payload.size());
+    }
+    if (m_zlrUhfOut) m_zlrUhfOut->append(info.join("  "));
+    appendSystemLog(QString("UHF 状态: %1").arg(info.join("  ")), QColor("#50a050"));
+}
+
+void MainWindow::onUhfGetTags()
+{
+    QByteArray payload;
+    QString err;
+    // GET_TAGS: [count]; count=0 取全部
+    if (!sendZlrSubCmd(0x0B, 0x0A, QByteArray(1, '\0'), &payload, &err)) {
+        appendSystemLog(QString("UHF 取标签失败: %1").arg(err), QColor("#c050a0"));
+        return;
+    }
+    // payload: [totalL, totalH, (epcLen, rssi, epc..)...]
+    // 解析到标签表格 (EPC, RSSI, 序号); 相同 EPC 去重只保留一行; 双击 EPC 可填入输入框
+    int total = 0;
+    QStringList rows;
+    QSet<QString> seenEpc;   // 已加入的 EPC (去重)
+    int dropped = 0;
+    if (payload.size() >= 2) {
+        total = static_cast<quint8>(payload[0]) | (static_cast<quint8>(payload[1]) << 8);
+        int i = 2;
+        int idx = 0;
+        while (i + 2 <= payload.size()) {
+            int epcLen = static_cast<quint8>(payload[i]);
+            quint8 rssi = static_cast<quint8>(payload[i + 1]);
+            i += 2;
+            if (i + epcLen > payload.size()) break;
+            QByteArray epc = payload.mid(i, epcLen);
+            i += epcLen;
+            QString epcS = QString::fromLatin1(epc.toHex()).toUpper();
+            if (seenEpc.contains(epcS)) { ++dropped; continue; }  // 重复 EPC 跳过
+            seenEpc.insert(epcS);
+            rows << QString("%1|%2|%3").arg(epcS, 2).arg(rssi).arg(++idx);
+        }
+    }
+    if (m_zlrUhfTagTable) {
+        m_zlrUhfTagTable->setRowCount(rows.size());
+        for (int r = 0; r < rows.size(); ++r) {
+            QStringList c = rows[r].split('|');
+            for (int col = 0; col < 3 && col < c.size(); ++col)
+                m_zlrUhfTagTable->setItem(r, col, new QTableWidgetItem(c[col]));
+        }
+        if (rows.isEmpty())
+            m_zlrUhfTagTable->setRowCount(0);
+    }
+    appendSystemLog(QString("UHF 取标签: 设备返回%1条, 去重%2条, 表格%3行")
+                        .arg(total).arg(dropped).arg(rows.size()), QColor("#50a050"));
+}
+
+void MainWindow::onUhfGetConfig()
+{
+    QByteArray payload;
+    QString err;
+    if (!sendZlrSubCmd(0x0B, 0x08, QByteArray(), &payload, &err)) {
+        appendSystemLog(QString("UHF 读配置失败: %1").arg(err), QColor("#c050a0"));
+        return;
+    }
+    // [powerDbm, antenna, checksumEn, session, target, q, band]
+    QStringList v;
+    if (payload.size() >= 6) {
+        v << QString("power=%1dBm").arg(static_cast<quint8>(payload[0]));
+        v << QString("ant=%1").arg(static_cast<quint8>(payload[1]));
+        v << QString("crc=%1").arg(static_cast<quint8>(payload[2]));
+        v << QString("session=%1").arg(static_cast<quint8>(payload[3]));
+        v << QString("target=%1").arg(static_cast<quint8>(payload[4]));
+        v << QString("q=%1").arg(static_cast<quint8>(payload[5]));
+        if (payload.size() >= 7) {
+            quint8 band = static_cast<quint8>(payload[6]);
+            v << QString("band=0x%1(%2)").arg(band, 2, 16, QChar('0'))
+                .arg(band == 0x01 ? "北美" : band == 0x06 ? "中国1" : band == 0x08 ? "CE_LOW" : band == 0xFF ? "全频段" : "?");
+        }
+    } else v << QString("payload=%1B").arg(payload.size());
+    if (m_zlrUhfOut) m_zlrUhfOut->append(v.join("  "));
+    appendSystemLog(QString("UHF 配置: %1").arg(v.join("  ")), QColor("#50a050"));
+}
+
+void MainWindow::onUhfSetConfig()
+{
+    // SET_CONFIG: [powerDbm, antenna, checksumEn, session, target, q, band]
+    quint8 band = m_zlrUhfBand ? static_cast<quint8>(m_zlrUhfBand->currentData().toUInt()) : 0x01;
+    QByteArray arg;
+    arg.append(static_cast<char>(m_zlrUhfPower->value()));
+    arg.append(static_cast<char>(0));            // antenna
+    arg.append(static_cast<char>(1));            // checksumEn
+    arg.append(static_cast<char>(0));            // session S0
+    arg.append(static_cast<char>(0));            // target A
+    arg.append(static_cast<char>(0));            // q=动态
+    arg.append(static_cast<char>(band));         // Region(新增 band)
+    QString err;
+    if (sendZlrSubCmd(0x0B, 0x09, arg, nullptr, &err))
+        appendSystemLog(QString("UHF: 配置已保存 (power=%1dBm band=0x%2)").arg(m_zlrUhfPower->value()).arg(band, 2, 16, QChar('0')), QColor("#50a050"));
+    else
+        appendSystemLog(QString("UHF 设配置失败: %1").arg(err), QColor("#c050a0"));
+}
+
+// UHF GET_STATUS: [state, link, totalTags, powered, antennaOk, lastErr, antRl H, antRl L, antVswr H, antVswr L]
+void MainWindow::onUhfGetStatus()
+{
+    QByteArray payload;
+    QString err;
+    if (!sendZlrSubCmd(0x0B, 0x0B, QByteArray(), &payload, &err)) {
+        appendSystemLog(QString("UHF 读状态失败: %1").arg(err), QColor("#c050a0"));
+        return;
+    }
+    QStringList v;
+    if (payload.size() >= 10) {
+        quint8 st = static_cast<quint8>(payload[0]);
+        quint8 link = static_cast<quint8>(payload[1]);
+        quint8 total = static_cast<quint8>(payload[2]);
+        quint8 powered = static_cast<quint8>(payload[3]);
+        quint8 antOk = static_cast<quint8>(payload[4]);
+        quint8 lastErr = static_cast<quint8>(payload[5]);
+        quint16 rl = static_cast<quint8>(payload[6]) << 8 | static_cast<quint8>(payload[7]);
+        quint16 vswr = static_cast<quint8>(payload[8]) << 8 | static_cast<quint8>(payload[9]);
+        static const char *stName[] = {"IDLE","READY","INVENTORY","READ","WRITE","ERROR","ANT_CHECK"};
+        v << QString("state=%1(%2)").arg(st).arg(st <= 6 ? stName[st] : "?");
+        v << QString("link=%1").arg(link == 0 ? "正常" : link == 1 ? "超时" : "CRC错");
+        v << QString("powered=%1").arg(powered ? "是" : "否");
+        v << QString("antOk=%1").arg(antOk ? "正常" : "不良");
+        v << QString("lastErr=%1").arg(lastErr);
+        v << QString("总标签=%1").arg(total);
+        v << QString("RL=%1").arg(rl == 0 ? "未测" : QString("%1 dB").arg(rl / 10.0, 0, 'f', 1));
+        v << QString("VSWR=%1").arg(vswr == 0 ? "未测" : QString("%1").arg(vswr / 100.0, 0, 'f', 2));
+    } else v << QString("payload=%1B").arg(payload.size());
+    if (m_zlrUhfOut) m_zlrUhfOut->append(v.join("  "));
+    appendSystemLog(QString("UHF 状态: %1").arg(v.join("  ")), QColor("#50a050"));
+}
+
+// UHF CHECK_ANT: [antennaOk, antRl H, antRl L, antVswr H, antVswr L]
+void MainWindow::onUhfCheckAnt()
+{
+    QByteArray payload;
+    QString err;
+    if (!sendZlrSubCmd(0x0B, 0x0C, QByteArray(), &payload, &err)) {
+        appendSystemLog(QString("UHF 天线检测失败: %1").arg(err), QColor("#c050a0"));
+        return;
+    }
+    QString out;
+    if (payload.size() >= 5) {
+        quint8 antOk = static_cast<quint8>(payload[0]);
+        quint16 rl = static_cast<quint8>(payload[1]) << 8 | static_cast<quint8>(payload[2]);
+        quint16 vswr = static_cast<quint8>(payload[3]) << 8 | static_cast<quint8>(payload[4]);
+        out = QString("天线%1  RL=%2  VSWR=%3")
+                  .arg(antOk ? "正常" : "不良")
+                  .arg(rl == 0 ? "未测" : QString("%1 dB").arg(rl / 10.0, 0, 'f', 1))
+                  .arg(vswr == 0 ? "未测" : QString("%1").arg(vswr / 100.0, 0, 'f', 2));
+    } else out = "空响应";
+    if (m_zlrUhfOut) m_zlrUhfOut->append("天线检测: " + out);
+    appendSystemLog(QString("UHF 天线检测: %1").arg(out), QColor("#50a050"));
+}
+
+// UHF READ_TAG: [epcLen, epc.., bank, addr, cnt]
+void MainWindow::onUhfReadTag()
+{
+    QString hex = m_zlrUhfEpc ? m_zlrUhfEpc->text().trimmed() : QString();
+    if (hex.isEmpty()) { appendSystemLog("UHF 读标签: 请先输入 EPC", QColor("#d08020")); return; }
+    QByteArray epc = QByteArray::fromHex(hex.toLatin1());
+    if (epc.isEmpty() || epc.size() > 12) { appendSystemLog("UHF 读标签: EPC 需为 1~12 字节 hex", QColor("#d08020")); return; }
+    QByteArray arg;
+    arg.append(static_cast<char>(epc.size()));
+    arg.append(epc);
+    arg.append(static_cast<char>(m_zlrUhfBank->value()));
+    arg.append(static_cast<char>(m_zlrUhfAddr->value()));
+    arg.append(static_cast<char>(m_zlrUhfCnt->value()));
+    QByteArray payload;
+    QString err;
+    if (!sendZlrSubCmd(0x0B, 0x04, arg, &payload, &err)) {
+        appendSystemLog(QString("UHF 读标签失败: %1").arg(err), QColor("#c050a0"));
+        return;
+    }
+    QString dataHex = QString::fromLatin1(payload.toHex(' ')).toUpper().trimmed();
+    if (m_zlrUhfOut) m_zlrUhfOut->append(QString("读标签 bank=%1 addr=%2 cnt=%3 → %4")
+                                .arg(m_zlrUhfBank->value()).arg(m_zlrUhfAddr->value()).arg(m_zlrUhfCnt->value())
+                                .arg(dataHex.isEmpty() ? "(空)" : dataHex));
+    appendSystemLog(QString("UHF 读标签: %1").arg(dataHex.isEmpty() ? "(空)" : dataHex), QColor("#50a050"));
+}
+
+// UHF WRITE_TAG: [epcLen, epc.., bank, addr, len, data..]
+void MainWindow::onUhfWriteTag()
+{
+    QString hex = m_zlrUhfEpc ? m_zlrUhfEpc->text().trimmed() : QString();
+    if (hex.isEmpty()) { appendSystemLog("UHF 写标签: 请先输入 EPC", QColor("#d08020")); return; }
+    QByteArray epc = QByteArray::fromHex(hex.toLatin1());
+    if (epc.isEmpty() || epc.size() > 12) { appendSystemLog("UHF 写标签: EPC 需为 1~12 字节 hex", QColor("#d08020")); return; }
+    QString dhex = m_zlrUhfData ? m_zlrUhfData->text().trimmed() : QString();
+    QByteArray data = QByteArray::fromHex(dhex.toLatin1());
+    if (data.isEmpty()) { appendSystemLog("UHF 写标签: 请先输入数据(hex)", QColor("#d08020")); return; }
+    QByteArray arg;
+    arg.append(static_cast<char>(epc.size()));
+    arg.append(epc);
+    arg.append(static_cast<char>(m_zlrUhfBank->value()));
+    arg.append(static_cast<char>(m_zlrUhfAddr->value()));
+    arg.append(static_cast<char>(data.size()));
+    arg.append(data);
+    QString err;
+    if (sendZlrSubCmd(0x0B, 0x05, arg, nullptr, &err))
+        appendSystemLog(QString("UHF 写标签: bank=%1 addr=%2 len=%3B 完成").arg(m_zlrUhfBank->value()).arg(m_zlrUhfAddr->value()).arg(data.size()), QColor("#50a050"));
+    else
+        appendSystemLog(QString("UHF 写标签失败: %1").arg(err), QColor("#c050a0"));
+}
+
+// UHF SCAN_START: [cycleL, cycleH] 自动扫描(连续盘点入缓冲, GET_TAGS 拉取)
+void MainWindow::onUhfSetScan()
+{
+    QByteArray arg;
+    int cycle = m_zlrUhfCycle ? m_zlrUhfCycle->value() : 1000;
+    arg.append(static_cast<char>(cycle & 0xFF));
+    arg.append(static_cast<char>((cycle >> 8) & 0xFF));
+    QString err;
+    if (sendZlrSubCmd(0x0B, 0x0D, arg, nullptr, &err))
+        appendSystemLog(QString("UHF: 自动扫描已启动 (周期%1ms, 用取标签拉取)").arg(cycle), QColor("#50a050"));
+    else
+        appendSystemLog(QString("UHF 自动扫描失败: %1").arg(err), QColor("#c050a0"));
+}
+
+void MainWindow::onUhfScanStop()
+{
+    QString err;
+    if (sendZlrSubCmd(0x0B, 0x0E, QByteArray(), nullptr, &err))
+        appendSystemLog("UHF: 自动扫描已停止", QColor("#50a050"));
+    else
+        appendSystemLog(QString("UHF 停止扫描失败: %1").arg(err), QColor("#c050a0"));
+}
+
+// UHF GET_DUMP: [cmd] → [cmd, err, data..] 0x22/0x29 原始字节诊断
+void MainWindow::onUhfGetDump()
+{
+    QByteArray payload;
+    QString err;
+    if (!sendZlrSubCmd(0x0B, 0x10, QByteArray(), &payload, &err)) {
+        appendSystemLog(QString("UHF 诊断失败: %1").arg(err), QColor("#c050a0"));
+        return;
+    }
+    QString hex = QString::fromLatin1(payload.toHex(' ')).toUpper().trimmed();
+    if (m_zlrUhfOut) m_zlrUhfOut->append(QString("UHF DUMP (%1B): %2").arg(payload.size()).arg(hex.isEmpty() ? "(空)" : hex));
+    appendSystemLog(QString("UHF DUMP (%1B)").arg(payload.size()), QColor("#50a050"));
+}
+
+// ===== AM (FC=0x0C) =====
+// 16bit 参数值高字节在后: (H<<8)|L
+static quint16 zlrAmVal16(const QLineEdit *le, quint16 def = 0)
+{
+    if (!le) return def;
+    bool ok = false;
+    quint32 v = le->text().toUInt(&ok, 10);
+    return ok ? static_cast<quint16>(v) : def;
+}
+void MainWindow::onAmGetConfig()
+{
+    QByteArray payload;
+    QString err;
+    if (!sendZlrSubCmd(0x0C, 0x01, QByteArray(), &payload, &err)) {
+        appendSystemLog(QString("AM 读配置失败: %1").arg(err), QColor("#c050a0"));
+        return;
+    }
+    // [thrH,thrL, hitH,hitL, freq, delayH,delayL, len, invert, syncH,syncL, volt, mode]
+    QStringList v;
+    if (payload.size() >= 13) {
+        auto v16 = [&](int hi, int lo){ return static_cast<quint8>(payload[hi])<<8 | static_cast<quint8>(payload[lo]); };
+        v << QString("thr=%1").arg(v16(0, 1));
+        v << QString("hit=%1").arg(v16(2, 3));
+        v << QString("freq=%1").arg(static_cast<quint8>(payload[4]));
+        v << QString("delay=%1").arg(v16(5, 6));
+        v << QString("len=%1").arg(static_cast<quint8>(payload[7]));
+        v << QString("invert=%1").arg(static_cast<quint8>(payload[8]));
+        v << QString("sync=%1").arg(v16(9, 10));
+        v << QString("volt=%1").arg(static_cast<quint8>(payload[11]));
+        v << QString("mode=%1").arg(static_cast<quint8>(payload[12]));
+        if (payload.size() >= 14)
+            v << QString("mains=%1").arg(static_cast<quint8>(payload[13]) ? "60Hz" : "50Hz");
+    } else v << QString("payload=%1B").arg(payload.size());
+    if (m_zlrAmOut) m_zlrAmOut->append(v.join("  "));
+    appendSystemLog(QString("AM 配置: %1").arg(v.join("  ")), QColor("#50a050"));
+}
+
+void MainWindow::onAmSetConfig()
+{
+    auto v16leH = [](quint16 v, QByteArray &d) {
+        d.append(static_cast<char>((v >> 8) & 0xFF));
+        d.append(static_cast<char>(v & 0xFF));
+    };
+    QByteArray d;
+    v16leH(zlrAmVal16(m_zlrAmThr, 10), d);
+    v16leH(zlrAmVal16(m_zlrAmHit, 5), d);
+    d.append(static_cast<char>(m_zlrAmFreq ? m_zlrAmFreq->text().toUInt() : 0));
+    v16leH(zlrAmVal16(m_zlrAmDelay, 0), d);
+    d.append(static_cast<char>(m_zlrAmLen ? m_zlrAmLen->text().toUInt() : 0));
+    d.append(static_cast<char>(m_zlrAmInvert ? m_zlrAmInvert->text().toUInt() : 0));
+    v16leH(zlrAmVal16(m_zlrAmSync, 0), d);
+    d.append(static_cast<char>(m_zlrAmVolt ? m_zlrAmVolt->text().toUInt() : 1));
+    d.append(static_cast<char>(m_zlrAmMode ? m_zlrAmMode->text().toUInt() : 0));
+    d.append(static_cast<char>(m_zlrAmMains ? m_zlrAmMains->text().toUInt() : 0));  // mains: 0=50Hz 1=60Hz
+    QString err;
+    if (sendZlrSubCmd(0x0C, 0x02, d, nullptr, &err))
+        appendSystemLog("AM: 配置已保存", QColor("#50a050"));
+    else
+        appendSystemLog(QString("AM 设配置失败: %1").arg(err), QColor("#c050a0"));
+}
+
+void MainWindow::onAmQuery()
+{
+    QByteArray payload;
+    QString err;
+    if (!sendZlrSubCmd(0x0C, 0x05, QByteArray(), &payload, &err)) {
+        appendSystemLog(QString("AM 查询失败: %1").arg(err), QColor("#c050a0"));
+        return;
+    }
+    // [link]
+    quint8 link = payload.isEmpty() ? 0xFF : static_cast<quint8>(payload[0]);
+    QString s = link == 0 ? "链路正常" : (link == 4 ? "链路错误" : link == 6 ? "超时" : QString("link=0x%1").arg(hex2(link)));
+    if (m_zlrAmOut) m_zlrAmOut->append(QString("AM 查询: %1").arg(s));
+    appendSystemLog(QString("AM 查询: %1").arg(s), QColor(link == 0 ? "#50a050" : "#d08020"));
+}
+
+// AM GET_STATUS: 无 err 字段, 首字节即 link: [link, evt(4B LE), lastEventMs(4B LE)]
+void MainWindow::onAmGetStatus()
+{
+    QByteArray payload;
+    QString err;
+    if (!sendZlrSubCmd(0x0C, 0x06, QByteArray(), &payload, &err)) {
+        appendSystemLog(QString("AM 监控失败: %1").arg(err), QColor("#c050a0"));
+        return;
+    }
+    // sendZlrSubCmd 已剥掉 [cmd, link]: GET_STATUS 无独立 err, data[1]=link 被当作 err 校验,
+    // link=0(正常) 时校验通过, outPayload=data.mid(2)=[evtL,evtH,evt3,evt4, lastL..last4] (8B)
+    QString out;
+    if (payload.size() >= 8) {
+        quint32 evt = static_cast<quint8>(payload[0]) | (static_cast<quint8>(payload[1]) << 8)
+                    | (static_cast<quint8>(payload[2]) << 16) | (static_cast<quint8>(payload[3]) << 24);
+        quint32 last = static_cast<quint8>(payload[4]) | (static_cast<quint8>(payload[5]) << 8)
+                     | (static_cast<quint8>(payload[6]) << 16) | (static_cast<quint8>(payload[7]) << 24);
+        out = QString("检测事件累计=%1  最近事件=%2ms").arg(evt).arg(last);
+    } else out = QString("payload=%1B").arg(payload.size());
+    if (m_zlrAmOut) m_zlrAmOut->append("AM 监控: " + out);
+    appendSystemLog(QString("AM 监控: %1").arg(out), QColor("#50a050"));
+}
+
+// AM SET_MODE: [mode]
+void MainWindow::onAmSetMode()
+{
+    QByteArray arg;
+    arg.append(static_cast<char>(m_zlrAmMode ? m_zlrAmMode->text().toUInt() : 0));
+    QString err;
+    if (sendZlrSubCmd(0x0C, 0x07, arg, nullptr, &err))
+        appendSystemLog("AM: 工作模式已切换", QColor("#50a050"));
+    else
+        appendSystemLog(QString("AM 切模式失败: %1").arg(err), QColor("#c050a0"));
+}
+
+// AM GET_WAVE: 触发同步波形采集 (0x64, 阻塞~1s) [pointsH, pointsL]
+void MainWindow::onAmGetWave()
+{
+    QByteArray payload;
+    QString err;
+    appendSystemLog("AM: 正在采集波形 (~1s)...", QColor("#d08020"));
+    if (!sendZlrSubCmd(0x0C, 0x08, QByteArray(), &payload, &err)) {
+        appendSystemLog(QString("AM 波形采集失败: %1").arg(err), QColor("#c050a0"));
+        return;
+    }
+    // payload: [pointsH, pointsL]
+    if (payload.size() >= 2) {
+        quint16 points = static_cast<quint8>(payload[0]) << 8 | static_cast<quint8>(payload[1]);
+        if (m_zlrAmWaveOut) m_zlrAmWaveOut->append(QString("波形已采集, 总点数=%1 (4800 采样率)" ).arg(points));
+        appendSystemLog(QString("AM: 波形采集完成, 总点数=%1").arg(points), QColor("#50a050"));
+    } else {
+        if (m_zlrAmWaveOut) m_zlrAmWaveOut->append(QString("波形采集完成 (points 未回, payload=%1B)").arg(payload.size()));
+        appendSystemLog("AM: 波形采集完成", QColor("#50a050"));
+    }
+}
+
+// AM GET_WAVE_PAGE: [page] → [page, err, pointsH, pointsL, w(≤48)]
+void MainWindow::onAmGetWavePage()
+{
+    QByteArray arg;
+    arg.append(static_cast<char>(m_zlrAmWavePage ? m_zlrAmWavePage->value() : 0));
+    QByteArray payload;
+    QString err;
+    if (!sendZlrSubCmd(0x0C, 0x09, arg, &payload, &err)) {
+        appendSystemLog(QString("AM 取波形页失败: %1").arg(err), QColor("#c050a0"));
+        return;
+    }
+    // payload: [pointsH, pointsL, w(≤48)]
+    QString out;
+    if (payload.size() >= 2) {
+        quint16 points = static_cast<quint8>(payload[0]) << 8 | static_cast<quint8>(payload[1]);
+        QByteArray w = (payload.size() > 2) ? payload.mid(2) : QByteArray();
+        QString wave;
+        for (int i = 0; i < w.size(); ++i) {
+            if (!wave.isEmpty()) wave += " ";
+            wave += QString("%1").arg(static_cast<quint8>(w[i]));
+        }
+        out = QString("页%1 总点%2 本页%3点\n").arg(m_zlrAmWavePage ? m_zlrAmWavePage->value() : 0).arg(points).arg(w.size()) + wave;
+    } else out = QString("payload=%1B").arg(payload.size());
+    if (m_zlrAmWaveOut) m_zlrAmWaveOut->append(out);
+    appendSystemLog("AM 波形页: 取回", QColor("#50a050"));
+}
+
+// ===== 开锁器 (FC=0x0D) =====
+void MainWindow::onLockerConfigure()
+{
+    // CONFIGURE: [hardCntL, hardCntH, softCntL, softCntH] (hardCnt 仅预检, 传0)
+    QByteArray d;
+    quint32 soft = m_zlrLockerSoftCnt ? static_cast<quint32>(m_zlrLockerSoftCnt->value()) : 1;
+    d.append(static_cast<char>(0)); d.append(static_cast<char>(0));
+    d.append(static_cast<char>(soft & 0xFF));
+    d.append(static_cast<char>((soft >> 8) & 0xFF));
+    QString err;
+    if (sendZlrSubCmd(0x0D, 0x01, d, nullptr, &err))
+        appendSystemLog(QString("开锁器: 清单已配置 (软标N=%1)").arg(soft), QColor("#50a050"));
+    else
+        appendSystemLog(QString("开锁器 配置失败: %1").arg(err), QColor("#c050a0"));
+}
+
+void MainWindow::onLockerAdd()
+{
+    // ADD: [epcLen, epc..]
+    QString hex = m_zlrLockerHardEpc ? m_zlrLockerHardEpc->text().trimmed() : QString();
+    if (hex.isEmpty()) { appendSystemLog("开锁器: 请先输入硬标签 EPC", QColor("#d08020")); return; }
+    QByteArray epc = QByteArray::fromHex(hex.toLatin1());
+    if (epc.isEmpty() || epc.size() > 12) {
+        appendSystemLog("开锁器: EPC 需为 1~12 字节 hex", QColor("#d08020"));
+        return;
+    }
+    QByteArray d;
+    d.append(static_cast<char>(epc.size()));
+    d.append(epc);
+    QString err;
+    if (sendZlrSubCmd(0x0D, 0x02, d, nullptr, &err))
+        appendSystemLog(QString("开锁器: 已追加硬标 %1").arg(QString::fromLatin1(epc.toHex()).toUpper()), QColor("#50a050"));
+    else
+        appendSystemLog(QString("开锁器 追加失败: %1").arg(err), QColor("#c050a0"));
+}
+
+void MainWindow::onLockerStart()
+{
+    QString err;
+    if (sendZlrSubCmd(0x0D, 0x03, QByteArray(), nullptr, &err))
+        appendSystemLog("开锁器: 已开始 (上电UHF+开扫)", QColor("#50a050"));
+    else
+        appendSystemLog(QString("开锁器 开始失败: %1").arg(err), QColor("#c050a0"));
+}
+
+void MainWindow::onLockerCancel()
+{
+    QString err;
+    if (sendZlrSubCmd(0x0D, 0x04, QByteArray(), nullptr, &err))
+        appendSystemLog("开锁器: 已取消", QColor("#50a050"));
+    else
+        appendSystemLog(QString("开锁器 取消失败: %1").arg(err), QColor("#c050a0"));
+}
+
+void MainWindow::onLockerQuery()
+{
+    QByteArray payload;
+    QString err;
+    if (!sendZlrSubCmd(0x0D, 0x05, QByteArray(), &payload, &err)) {
+        appendSystemLog(QString("开锁器 查询失败: %1").arg(err), QColor("#c050a0"));
+        return;
+    }
+    // [state, hmL,hmH, scL,scH, suL,suH]
+    static const char *stName[] = {"IDLE","CONFIGURED","UNLOCK_HOLD","SOFT_DECODE","DONE","FAULT"};
+    QStringList v;
+    if (payload.size() >= 7) {
+        quint8 st = static_cast<quint8>(payload[0]);
+        quint16 hm = static_cast<quint8>(payload[1]) | (static_cast<quint8>(payload[2]) << 8);
+        quint16 sc = static_cast<quint8>(payload[3]) | (static_cast<quint8>(payload[4]) << 8);
+        quint16 su = static_cast<quint8>(payload[5]) | (static_cast<quint8>(payload[6]) << 8);
+        v << QString("state=%1(%2)").arg(st).arg(st <= 5 ? stName[st] : "?");
+        v << QString("硬标解锁=%1").arg(hm);
+        v << QString("软标=%1/%2").arg(su).arg(sc);
+    } else v << QString("payload=%1B").arg(payload.size());
+    if (m_zlrLockerOut) m_zlrLockerOut->append(v.join("  "));
+    appendSystemLog(QString("开锁器 状态: %1").arg(v.join("  ")), QColor("#50a050"));
+}
+
+void MainWindow::onLockerGetEvent()
+{
+    QByteArray payload;
+    QString err;
+    if (!sendZlrSubCmd(0x0D, 0x07, QByteArray(), &payload, &err)) {
+        appendSystemLog(QString("开锁器 取事件失败: %1").arg(err), QColor("#c050a0"));
+        return;
+    }
+    // [code, epcLen, epc.., hmL,hmH, suL,suH, scL,scH, hcL,hcH]
+    static const char *evName[] = {"MATCH_OK","MISMATCH","HARD_DONE","SOFT_USED","TIMEOUT","DONE","FAULT"};
+    QString out;
+    if (payload.size() >= 1) {
+        quint8 code = static_cast<quint8>(payload[0]);
+        out += QString("事件 %1(%2)").arg(code).arg(code <= 6 ? evName[code] : "?");
+        int i = 1;
+        if (i < payload.size()) {
+            int epcLen = static_cast<quint8>(payload[i]); i++;
+            if (i + epcLen <= payload.size()) {
+                QByteArray epc = payload.mid(i, epcLen); i += epcLen;
+                out += QString(" EPC=%1").arg(QString::fromLatin1(epc.toHex()).toUpper(), 2);
+            }
+        }
+    } else out = "空事件";
+    if (m_zlrLockerOut) m_zlrLockerOut->append(out);
+    appendSystemLog(QString("开锁器 事件: %1").arg(out), QColor("#50a050"));
+}
+
+// ===== RGB (FC=0x0E) =====
+// RGB SET: [cmd=0x01, mask, reserved=0x00]; mask bit0=G 绿 / bit1=R 红 / bit2=B 蓝
+void MainWindow::onRgbSet()
+{
+    quint8 mask = 0;
+    if (m_zlrRgbG && m_zlrRgbG->isChecked()) mask |= 0x01;
+    if (m_zlrRgbR && m_zlrRgbR->isChecked()) mask |= 0x02;
+    if (m_zlrRgbB && m_zlrRgbB->isChecked()) mask |= 0x04;
+
+    QByteArray arg;
+    arg.append(static_cast<char>(mask));
+    arg.append(static_cast<char>(0x00)); // reserved
+    QByteArray payload;
+    QString err;
+    if (!sendZlrSubCmd(0x0E, 0x01, arg, &payload, &err)) {
+        appendSystemLog(QString("RGB 下发失败: %1 (mask=0x%2)").arg(err).arg(mask, 2, 16, QChar('0')), QColor("#c050a0"));
+        return;
+    }
+    // 响应回显 mask: payload=[mask]
+    quint8 echoMask = payload.isEmpty() ? mask : static_cast<quint8>(payload[0]);
+    QString colorStr;
+    colorStr += (echoMask & 0x01) ? "绿" : "";
+    colorStr += (echoMask & 0x02) ? "红" : "";
+    colorStr += (echoMask & 0x04) ? "蓝" : "";
+    if (colorStr.isEmpty()) colorStr = "全灭";
+    if (m_zlrRgbOutLabel)
+        m_zlrRgbOutLabel->setText(QString("上次 mask: 0x%1 (%2)").arg(echoMask, 2, 16, QChar('0')).arg(colorStr));
+    appendSystemLog(QString("RGB: 已下发 mask=0x%1 (%2)").arg(echoMask, 2, 16, QChar('0')).arg(colorStr), QColor("#50a050"));
+}
+
+void MainWindow::onRgbClear()
+{
+    // 下发 mask=0x00 (全灭)
+    QByteArray arg;
+    arg.append(static_cast<char>(0x00));
+    arg.append(static_cast<char>(0x00));
+    QByteArray payload;
+    QString err;
+    bool ok = sendZlrSubCmd(0x0E, 0x01, arg, &payload, &err);
+    // 清除勾选
+    if (m_zlrRgbG) m_zlrRgbG->setChecked(false);
+    if (m_zlrRgbR) m_zlrRgbR->setChecked(false);
+    if (m_zlrRgbB) m_zlrRgbB->setChecked(false);
+    if (m_zlrRgbOutLabel) m_zlrRgbOutLabel->setText("上次 mask: 0x00 (全灭)");
+    appendSystemLog("RGB: 全灭已下发", ok ? QColor("#50a050") : QColor("#d08020"));
+}
+
+// ===== 自检 (FC=0x0F) =====
+// 错误位名称表 (与协议 §15.1 bit 定义一致)
+static const char *kSelfErrName[] = {
+    "MOTOR_SPI", "MOTOR_FAULT", "UHF_COMM", "AM_COMM",
+    "PARAM_CRC", "TRAVEL_SW",
+    nullptr
+};
+static QString formatErrBits(quint16 bits)
+{
+    QStringList v;
+    for (int i = 0; i < 6; ++i) {
+        v << QString("%1=%2(%3)").arg(i).arg((bits >> i) & 1).arg(kSelfErrName[i]);
+    }
+    return v.join("  ");
+}
+
+void MainWindow::onSelfTestQuery()
+{
+    QByteArray payload;
+    QString err;
+    // sendZlrSubCmd 已剥掉 [cmd, err]: QUERY 响应 data[0]=cmd, data[1]=err,
+    // 后续: [errBitsL, errBitsH, motorCommOk, drvFault, uhfLink, amLink, paramCrc, switchErr]
+    if (!sendZlrSubCmd(0x0F, 0x01, QByteArray(), &payload, &err, 3000)) {
+        if (m_zlrSelfOut) m_zlrSelfOut->append(QString("自检 查询失败: %1").arg(err));
+        appendSystemLog(QString("自检 查询失败: %1").arg(err), QColor("#c050a0"));
+        return;
+    }
+    if (payload.size() < 8) {
+        if (m_zlrSelfOut) m_zlrSelfOut->append(QString("自检 响应长度不足: %1B").arg(payload.size()));
+        appendSystemLog(QString("自检 响应长度不足: %1B").arg(payload.size()), QColor("#d08020"));
+        return;
+    }
+    quint16 errBits = static_cast<quint8>(payload[0]) | (static_cast<quint8>(payload[1]) << 8);
+    quint8 motorCommOk = static_cast<quint8>(payload[2]);
+    quint8 drvFault = static_cast<quint8>(payload[3]);
+    quint8 uhfLink = static_cast<quint8>(payload[4]);
+    quint8 amLink = static_cast<quint8>(payload[5]);
+    quint8 paramCrc = static_cast<quint8>(payload[6]);
+    quint8 switchErr = static_cast<quint8>(payload[7]);
+
+    // 渲染锁存错误位
+    QString bitsHex = QString("0x%1").arg(errBits, 4, 16, QChar('0'));
+    QString bitsLabel = QString("锁存错误位 %1 (二进制): %2")
+                            .arg(bitsHex).arg(formatErrBits(errBits));
+    if (errBits == 0) bitsLabel += "  ✓ 无错误";
+    if (m_zlrSelfErrBitsLabel) {
+        m_zlrSelfErrBitsLabel->setText(bitsLabel);
+        m_zlrSelfErrBitsLabel->setStyleSheet(errBits == 0
+            ? "color:#2a8030; font-size:0.92em; padding:4px;"
+            : "color:#c05050; font-size:0.92em; padding:4px; font-weight:bold;");
+    }
+    // 渲染实时诊断
+    QString diag = QString("实时诊断: motorCommOk=%1  drvFault=0x%2  uhfLink=%3  amLink=%4  paramCrc=%5  switchErr=0x%6")
+                       .arg(motorCommOk)
+                       .arg(drvFault, 2, 16, QChar('0'))
+                       .arg(uhfLink)
+                       .arg(amLink)
+                       .arg(paramCrc)
+                       .arg(switchErr, 2, 16, QChar('0'));
+    if (m_zlrSelfDiagLabel) m_zlrSelfDiagLabel->setText(diag);
+
+    if (m_zlrSelfOut) m_zlrSelfOut->append(bitsLabel + "\n" + diag);
+    appendSystemLog(QString("自检: errBits=%1 motorCommOk=%2 drvFault=0x%3 uhfLink=%4 amLink=%5 paramCrc=%6 switchErr=0x%7")
+                        .arg(bitsHex).arg(motorCommOk)
+                        .arg(drvFault, 2, 16, QChar('0')).arg(uhfLink).arg(amLink)
+                        .arg(paramCrc).arg(switchErr, 2, 16, QChar('0')),
+                    QColor(errBits == 0 ? "#50a050" : "#d08020"));
+}
+
+void MainWindow::onSelfTestRerun()
+{
+    // RERUN 阻塞约 3s, 用 8000ms 超时保护 (避免默认 3000 卡临界)
+    QString err;
+    appendSystemLog("自检: 正在重探外设 (~3s)...", QColor("#d08020"));
+    QByteArray payload;
+    if (!sendZlrSubCmd(0x0F, 0x02, QByteArray(), &payload, &err, 8000)) {
+        if (m_zlrSelfOut) m_zlrSelfOut->append(QString("自检 重探失败: %1").arg(err));
+        appendSystemLog(QString("自检 重探失败: %1").arg(err), QColor("#c050a0"));
+        return;
+    }
+    if (payload.size() < 2) {
+        if (m_zlrSelfOut) m_zlrSelfOut->append(QString("自检 重探响应长度不足: %1B").arg(payload.size()));
+        appendSystemLog(QString("自检 重探响应长度不足: %1B").arg(payload.size()), QColor("#d08020"));
+        return;
+    }
+    quint16 errBits = static_cast<quint8>(payload[0]) | (static_cast<quint8>(payload[1]) << 8);
+    QString bitsHex = QString("0x%1").arg(errBits, 4, 16, QChar('0'));
+    QString bitsLabel = QString("重探完成 锁存错误位 %1 (二进制): %2")
+                            .arg(bitsHex).arg(formatErrBits(errBits));
+    if (errBits == 0) bitsLabel += "  ✓ 全清";
+    if (m_zlrSelfErrBitsLabel) {
+        m_zlrSelfErrBitsLabel->setText(bitsLabel);
+        m_zlrSelfErrBitsLabel->setStyleSheet(errBits == 0
+            ? "color:#2a8030; font-size:0.92em; padding:4px;"
+            : "color:#c05050; font-size:0.92em; padding:4px; font-weight:bold;");
+    }
+    if (m_zlrSelfOut) m_zlrSelfOut->append(bitsLabel);
+    appendSystemLog(QString("自检 重探完成: errBits=%1").arg(bitsHex),
+                    QColor(errBits == 0 ? "#50a050" : "#d08020"));
+}
+
+void MainWindow::onSelfTestClear()
+{
+    quint16 mask = m_zlrSelfClearMask ? static_cast<quint16>(m_zlrSelfClearMask->value()) : 0;
+    QByteArray arg;
+    arg.append(static_cast<char>(mask & 0xFF));
+    arg.append(static_cast<char>((mask >> 8) & 0xFF));
+    QByteArray payload;
+    QString err;
+    if (!sendZlrSubCmd(0x0F, 0x03, arg, &payload, &err, 3000)) {
+        if (m_zlrSelfOut) m_zlrSelfOut->append(QString("自检 清错误失败: %1").arg(err));
+        appendSystemLog(QString("自检 清错误失败: %1").arg(err), QColor("#c050a0"));
+        return;
+    }
+    if (payload.size() < 2) {
+        if (m_zlrSelfOut) m_zlrSelfOut->append(QString("自检 清错误响应长度不足: %1B").arg(payload.size()));
+        appendSystemLog(QString("自检 清错误响应长度不足: %1B").arg(payload.size()), QColor("#d08020"));
+        return;
+    }
+    quint16 after = static_cast<quint8>(payload[0]) | (static_cast<quint8>(payload[1]) << 8);
+    QString info = QString("CLEAR mask=0x%1 → 剩余位图 0x%2").arg(mask, 4, 16, QChar('0')).arg(after, 4, 16, QChar('0'));
+    if (m_zlrSelfOut) m_zlrSelfOut->append(info);
+    appendSystemLog(QString("自检 %1").arg(info), QColor("#50a050"));
+    // 顺手再触发一次 QUERY 刷新显示 (可选: 这里省略, 让用户自己再点查询)
+}
+
 
 // RFID 通用: 发送 + 解析响应 + 提取 UID
 //   返回 true 表示成功拿到 UID; outUid 填 hex 大写
@@ -1665,7 +3462,7 @@ bool MainWindow::sendFcAndCheckResult(quint8 fc, const QString &note, int timeou
     appendLog("[SYS][TX]", req, QColor("#c050a0"),
               QString("%1 请求").arg(note));
 
-    if (!waitForResponse(timeoutMs)) {
+    if (!waitForResponse(timeoutMs > 0 ? timeoutMs : 3000)) {
         appendSystemLog(QString("[%1] 超时 %2ms 无响应").arg(note).arg(timeoutMs), QColor("#d08020"));
         return false;
     }
@@ -2742,6 +4539,7 @@ void MainWindow::enableFuncButtons(bool enable)
     m_updateBtn->setEnabled(enable && m_funcUnlocked);
     m_debugBtn->setEnabled(enable && m_funcUnlocked);
     m_sccdBtn->setEnabled(enable && m_funcUnlocked);
+    if (m_zlrBtn) m_zlrBtn->setEnabled(enable && m_funcUnlocked);
     m_protoEnterBootBtn->setEnabled(enable && m_funcUnlocked);
     m_protoResetBtn->setEnabled(enable && m_funcUnlocked);
     // 射频控制按钮: 握手成功后开放 (Sccd Area 内)
@@ -2765,6 +4563,13 @@ void MainWindow::resetUiToInitialState()
     if (m_sccdBtn && m_sccdBtn->isChecked()) {
         m_sccdBtn->setChecked(false);   // 触发 onSccdToggle 隐藏 m_sccdBox + 复位按钮底色
     }
+    // ZLR5401 Area 收起
+    if (m_zlrBtn && m_zlrBtn->isChecked()) {
+        m_zlrBtn->setChecked(false);    // 触发 onZlrToggle 隐藏 m_zlrBox + 复位按钮底色
+    }
+    // 复位 ZLR5401 区域标题/提示 (断开后还原默认)
+    if (m_zlrBox) m_zlrBox->setTitle(tr("ZLR5401 Area"));
+    if (m_zlrBtn) m_zlrBtn->setToolTip(tr("切换 ZLR5401 Area 显示/隐藏 (电机 / UHF / AM / 开锁器 / RGB)"));
 
     // 14443A Tab
     if (m_14443AUidEdit)     m_14443AUidEdit->clear();

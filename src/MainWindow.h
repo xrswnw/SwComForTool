@@ -14,10 +14,13 @@
 #include <QPointer>
 #include <QTabWidget>
 #include <QGroupBox>
+#include <QTableWidget>
+#include <QTimer>
 
 class ITransport;
 class SerialPortManager;
 class ProtocolParser;
+struct FrameData;   // 前置声明 (定义于 ProtocolParser.h), 供 handleZlrPushFrame 信号参数用
 #ifdef COMFORTOOL_ENABLE_USB
 #include "HidDeviceInfo.h"  // HidDeviceInfo 定义 (枚举结果)
 #endif
@@ -70,6 +73,7 @@ private slots:
     void onPathLabelClicked();         // 点击路径 Label 弹 HID 设备选择菜单
     void updatePathLabel();             // 根据 m_hidDevices/m_selectedHudIdx 刷新 m_pathLabel 显示
     void onSccdToggle(bool checked);   // 切换 Sccd 区域显示/隐藏 + 按钮底色
+    void onZlrToggle(bool checked);    // 切换 ZLR5401 区域显示/隐藏 + 按钮底色
     void on14443AInventory();          // 14443A: 盘点单标签 → makeRfidInventory → 填 UID
     void on14443AReadBlock();          // 14443A: 读块
     void on14443AWriteBlock();         // 14443A: 写块
@@ -103,6 +107,61 @@ private slots:
     void on14443AAuthKeyA();           // 14443A: KeyA 选中 (互斥)
     void on14443AAuthKeyB();           // 14443A: KeyB 选中 (互斥)
 
+    // ===== ZLR5401: 电机控制 (FC=0x0A) =====
+    void onMotorMove(int dir);             // 公共 MOVE 流程 (dir 0=正 1=反)
+    void onMotorMoveCw();              // 正转 MOVE dir=0
+    void onMotorMoveCcw();             // 反转 MOVE dir=1
+    void onMotorStop();                // STOP
+    void onMotorSpeed();               // SPEED (只发速度)
+    void onMotorTorque();              // TORQUE (只发转矩)
+    void onMotorQuery();               // QUERY (读状态/故障/步数)
+    void onMotorClear();               // CLEAR (清故障)
+    void onMotorTest();                // TEST: 电机行程测试 (passes 次往返)
+    void onMotorHealth();              // HEALTH: 读健康/堵转监测
+    void onMotorStats();               // STATS: 读运行统计
+
+    // ===== ZLR5401: UHF (FC=0x0B) =====
+    void onUhfOpen();                  // OPEN
+    void onUhfClose();                 // CLOSE
+    void onUhfInventory();             // INVENTORY
+    void onUhfQuery();                 // QUERY
+    void onUhfGetTags();               // GET_TAGS
+    void onUhfSetConfig();             // SET_CONFIG
+    void onUhfGetConfig();             // GET_CONFIG
+    void onUhfGetStatus();             // GET_STATUS (状态/错误/回波)
+    void onUhfCheckAnt();              // CHECK_ANT (主动回波检测)
+    void onUhfReadTag();               // READ_TAG
+    void onUhfWriteTag();              // WRITE_TAG
+    void onUhfSetScan();               // SCAN_START (自动扫描, cycle)
+    void onUhfScanStop();              // SCAN_STOP (停止自动扫描)
+    void onUhfGetDump();               // GET_DUMP (诊断)
+
+    // ===== ZLR5401: AM (FC=0x0C) =====
+    void onAmGetConfig();              // GET_CONFIG
+    void onAmSetConfig();              // SET_CONFIG
+    void onAmQuery();                  // QUERY
+    void onAmGetStatus();              // GET_STATUS (监控: link + 事件累计 + 最近事件ms)
+    void onAmSetMode();                // SET_MODE (仅切工作模式)
+    void onAmGetWave();                // GET_WAVE (波形采集, 阻塞~1s)
+    void onAmGetWavePage();            // GET_WAVE_PAGE (取一页波形)
+
+    // ===== ZLR5401: 开锁器 (FC=0x0D) =====
+    void onLockerConfigure();          // CONFIGURE
+    void onLockerAdd();                // ADD
+    void onLockerStart();              // START
+    void onLockerCancel();             // CANCEL
+    void onLockerQuery();              // QUERY
+    void onLockerGetEvent();           // GET_EVENT
+
+    // ===== ZLR5401: RGB (FC=0x0E) =====
+    void onRgbSet();                   // SET: 按勾选组合下发 mask
+    void onRgbClear();                 // 全灭 mask=0x00 + 清勾选
+
+    // ===== ZLR5401: 自检 (FC=0x0F) =====
+    void onSelfTestQuery();            // QUERY: 读锁存错误位 + 实时诊断快照
+    void onSelfTestRerun();            // RERUN: 重探外设 (阻塞~3s)
+    void onSelfTestClear();            // CLEAR: 按掩码清指定位
+
 private:
     bool eventFilter(QObject *obj, QEvent *event) override;
     void setupUI();
@@ -119,6 +178,11 @@ private:
                            QByteArray *outPayload, QString *outErrNote);
     bool sendFcAndCheckResult(quint8 fc, const QString &note, int timeoutMs = 3000);
     bool sendRfidCtrl(quint8 subCmd, const QByteArray &req, QString *outErrNote);  // FC=0x16 同步收发
+    // ZLR5401 通用子命令收发: 打包 subCmd+argData → 发 → 校验 func^0xFF + data[0]==subCmd
+    //   成功返回 true, outPayload=data.mid(2) (去掉 cmd+err), outErrNote 填错误说明
+    //   timeoutMs 默认 3000; 长命令如 SELFTEST RERUN(~3s) 可传 8000
+    bool sendZlrSubCmd(quint8 fc, quint8 subCmd, const QByteArray &argData,
+                       QByteArray *outPayload, QString *outErrNote, int timeoutMs = 3000);
     bool rfOpenWithProto(quint8 proto);   // 按协议 INIT+DELAY+OPEN 时序开启射频
     bool rfEnsureOpen14443A();            // 14443A 操作前确保射频已开 (未开则开启)
     bool rfEnsureOpen15693();             // 15693 操作前确保射频已开 (未开则开启)
@@ -167,6 +231,94 @@ private:
     QPushButton *m_sccdBtn14443A = nullptr; // 切到 14443A tab
     QPushButton *m_sccdBtn14443B = nullptr; // 切到 14443B tab
     QTabWidget *m_sccdTabs = nullptr;       // 三个协议 Tab
+
+    // ZLR5401 区域 (Sccd 下方扩展, 参照 Sccd 交互)
+    QPushButton *m_zlrBtn = nullptr;         // Supported Devices 区: ZLR5401 开关 (可勾选)
+    QGroupBox   *m_zlrBox = nullptr;         // ZLR5401 Area 主框 (默认隐藏)
+    QTabWidget  *m_zlrTabs = nullptr;        // 电机 / UHF / AM / 开锁器 四个 Tab
+    // 电机 (FC=0x0A)
+    QSpinBox *m_zlrMotorAngle  = nullptr;    // 角度(°), 0=持续运行
+    QSpinBox *m_zlrMotorSteps  = nullptr;    // 每转微步数 (默认 3200)
+    QSpinBox *m_zlrMotorSpeed  = nullptr;    // 微步/秒 (1~2000)
+    QSpinBox *m_zlrMotorTorque = nullptr;    // 转矩% (6~100)
+    QTextEdit *m_zlrMotorOut   = nullptr;    // 电机输出区
+    QPushButton *m_zlrMotorCwBtn = nullptr;  // 正转
+    QPushButton *m_zlrMotorCcwBtn = nullptr; // 反转
+    QPushButton *m_zlrMotorStopBtn = nullptr;
+    QPushButton *m_zlrMotorClearBtn = nullptr;
+    QPushButton *m_zlrMotorSpeedBtn = nullptr;
+    QPushButton *m_zlrMotorTorqueBtn = nullptr;
+    QSpinBox *m_zlrMotorTestPasses = nullptr;  // 行程测试往返次数
+    QPushButton *m_zlrMotorTestBtn = nullptr;  // 电机行程测试
+    QPushButton *m_zlrMotorHealthBtn = nullptr; // HEALTH (健康/堵转)
+    QPushButton *m_zlrMotorStatsBtn = nullptr;  // STATS (运行统计)
+    QPushButton *m_zlrMotorStateBtn = nullptr;  // 获取状态 (QUERY, 位于"其他"区)
+    // UHF (FC=0x0B)
+    QSpinBox *m_zlrUhfPower    = nullptr;    // 功率 dBm (5~30)
+    QLineEdit *m_zlrUhfEpc      = nullptr;   // EPC (读/写标签定位)
+    QTextEdit *m_zlrUhfOut      = nullptr;   // UHF 输出区
+    QComboBox *m_zlrUhfBand     = nullptr;   // 频段 Region (0x01/06/08/FF)
+    QSpinBox *m_zlrUhfBank      = nullptr;   // 读/写标签 memory bank
+    QSpinBox *m_zlrUhfAddr      = nullptr;   // 字地址
+    QSpinBox *m_zlrUhfCnt       = nullptr;   // 读的字数 / 写字节数
+    QLineEdit *m_zlrUhfData     = nullptr;   // 写标签数据 (hex)
+    QPushButton *m_zlrUhfOpenBtn = nullptr;
+    QPushButton *m_zlrUhfCloseBtn = nullptr;
+    QPushButton *m_zlrUhfInvBtn = nullptr;
+    QPushButton *m_zlrUhfQueryBtn = nullptr;
+    QPushButton *m_zlrUhfGetTagsBtn = nullptr;
+    QPushButton *m_zlrUhfSetCfgBtn = nullptr;
+    QPushButton *m_zlrUhfGetCfgBtn = nullptr;
+    QPushButton *m_zlrUhfStatusBtn = nullptr;   // GET_STATUS
+    QPushButton *m_zlrUhfAntBtn = nullptr;      // CHECK_ANT
+    QPushButton *m_zlrUhfReadBtn = nullptr;     // READ_TAG
+    QPushButton *m_zlrUhfWriteBtn = nullptr;    // WRITE_TAG
+    QSpinBox *m_zlrUhfCycle     = nullptr;      // SCAN_START cycle(ms) 每轮盘存超时
+    QPushButton *m_zlrUhfScanBtn = nullptr;     // SCAN_START 自动扫描
+    QPushButton *m_zlrUhfScanStopBtn = nullptr; // SCAN_STOP
+    QPushButton *m_zlrUhfDumpBtn = nullptr;     // GET_DUMP 诊断
+    QTableWidget *m_zlrUhfTagTable = nullptr;   // 标签表格 (EPC 双击填入输入框)
+    // AM (FC=0x0C)
+    QLineEdit *m_zlrAmThr  = nullptr; QLineEdit *m_zlrAmHit = nullptr; QLineEdit *m_zlrAmFreq = nullptr;
+    QLineEdit *m_zlrAmDelay = nullptr; QLineEdit *m_zlrAmLen = nullptr; QLineEdit *m_zlrAmInvert = nullptr;
+    QLineEdit *m_zlrAmSync = nullptr; QLineEdit *m_zlrAmVolt = nullptr; QLineEdit *m_zlrAmMode = nullptr;
+    QLineEdit *m_zlrAmMains = nullptr;         // 市电频率 0=50Hz 1=60Hz
+    QTextEdit *m_zlrAmOut = nullptr;         // AM 输出区
+    QPushButton *m_zlrAmGetBtn = nullptr;
+    QPushButton *m_zlrAmSetBtn = nullptr;
+    QPushButton *m_zlrAmQueryBtn = nullptr;
+    QPushButton *m_zlrAmStatusBtn = nullptr;   // GET_STATUS (监控)
+    QPushButton *m_zlrAmSetModeBtn = nullptr;  // SET_MODE (切工作模式)
+    QPushButton *m_zlrAmWaveBtn = nullptr;     // GET_WAVE (波形采集)
+    QSpinBox *m_zlrAmWavePage = nullptr;       // GET_WAVE_PAGE 页码
+    QPushButton *m_zlrAmWavePageBtn = nullptr; // 取一页波形
+    QTextEdit *m_zlrAmWaveOut = nullptr;       // AM 波形输出
+    // 开锁器 (FC=0x0D)
+    QSpinBox *m_zlrLockerSoftCnt = nullptr;  // 软标总数 N
+    QLineEdit *m_zlrLockerHardEpc = nullptr; // 追加硬标签 EPC (hex)
+    QTextEdit *m_zlrLockerOut = nullptr;     // 开锁器输出区
+    QPushButton *m_zlrLockerCfgBtn = nullptr;
+    QPushButton *m_zlrLockerAddBtn = nullptr;
+    QPushButton *m_zlrLockerStartBtn = nullptr;
+    QPushButton *m_zlrLockerCancelBtn = nullptr;
+    QPushButton *m_zlrLockerQueryBtn = nullptr;
+    QPushButton *m_zlrLockerEvtBtn = nullptr;
+    // RGB (FC=0x0E)
+    QCheckBox *m_zlrRgbG = nullptr;            // 绿 使能 (bit0)
+    QCheckBox *m_zlrRgbR = nullptr;            // 红 使能 (bit1)
+    QCheckBox *m_zlrRgbB = nullptr;            // 蓝 使能 (bit2)
+    QPushButton *m_zlrRgbSetBtn = nullptr;     // 下发 RGB
+    QPushButton *m_zlrRgbClearBtn = nullptr;   // 全灭
+    QLabel *m_zlrRgbOutLabel = nullptr;        // 上次 mask 回显
+    // 自检 (FC=0x0F)
+    QLabel *m_zlrSelfErrBitsLabel = nullptr;   // 锁存错误位 16bit (二/十六进制)
+    QLabel *m_zlrSelfDiagLabel = nullptr;      // 实时诊断快照 (motorCommOk/drvFault/uhfLink/amLink/paramCrc/switchErr)
+    QPushButton *m_zlrSelfQueryBtn = nullptr;  // QUERY
+    QPushButton *m_zlrSelfRerunBtn = nullptr;  // RERUN (阻塞~3s)
+    QSpinBox *m_zlrSelfClearMask = nullptr;    // CLEAR 掩码 (16bit)
+    QPushButton *m_zlrSelfClearBtn = nullptr;  // CLEAR 触发
+    QTextEdit *m_zlrSelfOut = nullptr;         // 自检输出区
+
 
     // 15693 Tab 控件
     QPushButton *m_15693InventoryBtn = nullptr;

@@ -347,13 +347,11 @@ QByteArray HidManagerWin::readAll()
 
 void HidManagerWin::appendRxFrame(const QByteArray &raw)
 {
-    // raw = 设备 64B 报文, 首字节 0x02 为设备协议前缀(Report ID 已在读线程剥离)
-    // 兼容首字节已是 0x53 (无前缀) 的场景, 与 HidManagerMac 同语义
-    QByteArray frame = raw;
-    if (frame.size() >= 1 && static_cast<quint8>(frame[0]) == 0x02)
-        frame = frame.mid(1);
+    // Round 024/Display: raw = 设备 64B 报文, 首字节 0x02 为设备协议前缀(Read Report ID 已在读线程剥离).
+    // 保留原文 (含 0x02 前缀 + 尾部填充), 供日志/解析显示完整原始帧;
+    // parseFrame 已容忍可选 0x02 前缀, 与 HidManagerMac 语义一致.
     QMutexLocker lock(&m_rxMutex);
-    m_rxBuf.append(frame);
+    m_rxBuf.append(raw);
 }
 
 void HidManagerWin::onReadData(const QByteArray &raw)

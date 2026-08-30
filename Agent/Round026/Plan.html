@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Round026 计划 — 重构 ZLR5401 电机 Tab 分区布局</title>
+<style>
+  body { font-family:"PingFang SC","Microsoft YaHei",sans-serif; max-width:1120px; margin:0 auto; padding:24px 32px; color:#2a2438; line-height:1.75; background:#faf8fc; }
+  h1 { color:#5a3a8a; border-bottom:3px solid #b8a0d8; padding-bottom:8px; }
+  h2 { color:#6a4a9a; margin-top:30px; border-left:5px solid #b8a0d8; padding-left:10px; }
+  h3 { color:#7a5aaa; margin-top:18px; }
+  code { background:#ede6f4; padding:1px 6px; border-radius:4px; font-family:"JetBrains Mono",Consolas,monospace; font-size:0.9em; }
+  pre { background:#1e1a2e; color:#e0d8f0; padding:14px 18px; border-radius:8px; overflow-x:auto; font-size:0.83em; line-height:1.5; }
+  table { border-collapse:collapse; width:100%; margin:10px 0; }
+  th,td { border:1px solid #c8b8e0; padding:7px 11px; text-align:left; vertical-align:top; }
+  th { background:#d8c8f0; color:#4a2a7a; }
+  tr:nth-child(even){ background:#f0eaf8; }
+  .ok { color:#2a8030; font-weight:bold; }
+  .warn { color:#c07020; font-weight:bold; }
+  .box { border:1px solid #c8b8e0; border-radius:8px; padding:10px 16px; margin:12px 0; background:#fff; }
+  .box.ok { border-color:#a0d8a0; background:#f5fff5; }
+  ul { margin:6px 0; padding-left:22px; } li { margin:3px 0; }
+  .small { color:#706080; font-size:0.88em; }
+  .step { background:#f6f2fb; border-left:4px solid #8a6ab0; padding:8px 14px; margin:10px 0; border-radius:0 6px 6px 0; }
+  .step b { color:#5a3a8a; }
+</style>
+</head>
+<body>
+
+<h1>Round026 计划 — 重构 ZLR5401 电机 Tab 分区布局</h1>
+<p class="small">需求：<code>Agent/Round026/Demand.md</code> &nbsp;|&nbsp; 状态：<b>等待确认，计划不执行</b></p>
+
+<div class="box">
+<b>需求复述（5 点）</b>
+<ul>
+<li><b>1 速度区</b>：速度 + 每转微步 <b>上下排列</b>，置于当前区域左上方；<b>设置(设速度)</b> 在二者之下；三者加边框，<b>边框文字"速度"</b>（类似 Version 的 GroupBox 处理）。</li>
+<li><b>2 转矩区</b>：放在速度 <b>右侧</b>；边框 <b>"转矩"</b>，内含 <b>转矩 spin + 设转矩</b>。</li>
+<li><b>3 控制区</b>：再右侧增加一框，命名 <b>"控制"</b>：第一行 <b>角度</b>，第二行 <b>正转 / 停止 / 反转</b>，<b>颜色区分</b>。</li>
+<li><b>4 状态区</b>：加一框 <b>"状态"</b>：第一行一个<b>输入框</b>（获取状态后渲染），第二行 <b>获取按钮</b>。</li>
+<li><b>5 分区处理</b>：故障清除、健康、统计、行程测试 同样用带边框分区处理。</li>
+</ul>
+</div>
+
+<h2>一、现状（当前电机 Tab）</h2>
+<div class="box">
+<p>当前电机 Tab 是平铺多行 QHBoxLayout：行1(角度+每转微步)、行2(速度+转矩+设速度/设转矩)、行3a(正转/反转/停止/查询/清错)、行3b(测试次数+行程测试/健康/统计)、行4(输出区 QTextEdit)。无分区边框。</p>
+</div>
+
+<h2>二、目标布局设计</h2>
+<pre>
+┌─ 速度 ──────────────┐  ┌─ 转矩 ───────┐  ┌─ 控制 ───────────────┐  ┌─ 状态 ─────────────┐
+│ 速度(微步/s):[spin]  │  │ 转矩(%):[spin]│  │ 角度(°):[spin]       │  │ [状态输入框 QLineEdit] │
+│ 每转微步:[spin]      │  │ [设转矩]     │  │ 正转(CW)          │  │ [获取]              │
+│ [设速度]            │  └──────────────┘  │ 停止              │  └─────────────────────┘
+└─────────────────────┘                    │ 反转(CCW)          │
+                                           └─────────────────────┘
+┌─ 故障清除 ─┐  ┌─ 行程测试 ────┐  ┌─ 健康 ──┐  ┌─ 统计 ──┐
+│ [清除故障]│  │ 次数[:spin]    │  │[健康]  │  │[统计]  │
+└───────────┘  │ [行程测试]    │  └────────┘  └─────────┘
+               └───────────────┘
+（下方保留 输出区，渲染 QUERY/HEALTH/STATS 详情）
+</pre>
+
+<div class="box ok">
+<b>交互调整</b>
+<ul>
+<li><b>状态区</b>：新增 `m_zlrMotorStateEdit`(QLineEdit，只读) + `m_zlrMotorStateBtn`("获取")。点击「获取」→ 发 QUERY(0x0A/0x05) → 把 state/fault/diag/stepsDone <b>渲染进状态输入框</b>（替代原来只输出到 log/输出区）。</li>
+<li><b>正转/停止/反转颜色区分</b>：正转、反转用现有 `zlrMotorMain`(红) 主操作色，<b>停止用警示色</b>(黄/橙)区分危险动作。</li>
+<li>其余按钮/槽逻辑不变，仅<b>重新排版</b>到分区 GroupBox 内；原有 log 输出保留。</li>
+</ul>
+</div>
+
+<h2>三、修改清单</h2>
+<table>
+<tr><th>文件</th><th>改动</th><th>影响接口</th></tr>
+<tr><td><code>src/MainWindow.h</code></td><td>新增 <code>m_zlrMotorStateEdit</code>(状态输入) + <code>m_zlrMotorStateBtn</code>(获取按钮) 成员。</td><td><span class="ok">否</span></td></tr>
+<tr><td><code>src/MainWindow.cpp</code></td><td>①重写电机 Tab setupUI 为分区 GroupBox 布局；②新增状态区控件+connect；③<code>onMotorQuery</code> 改为渲染到状态输入框；④样式表加「停止」警示色、状态框样式。</td><td><span class="ok">否</span></td></tr>
+</table>
+<p class="small">纯 UI 布局重构，不改任何协议帧/发送逻辑/槽签名，Win 接口零影响。</p>
+
+<h2>四、执行步骤</h2>
+<div class="step"><b>0 备份</b>：<code>./backup.sh "Round026: 电机Tab分区布局"</code>。</div>
+<div class="step"><b>1 改 .h</b>：新增状态区两个成员。</div>
+<div class="step"><b>2 改 .cpp</b>：重写电机 Tab setupUI 分区布局（速度/转矩/控制/状态/故障清除+健康+统计+行程测试 各 GroupBox），新增状态区逻辑，onMotorQuery 渲染改道。</div>
+<div class="step"><b>3 样式</b>：停止警示色 + 状态框只读样式。</div>
+<div class="step"><b>4 编译</b>：零错误零警告。</div>
+<div class="step"><b>5 冒烟</b>：offscreen 5s 无崩溃。</div>
+<div class="step"><b>6 打包</b>：<code>./issue/pack.sh</code> 更新 Mac_Arm64 + zip。</div>
+<div class="step"><b>7 报告</b>：生成 Report.html。</div>
+
+<h2>五、验证说明</h2>
+<div class="box">
+<ul>
+<li>无真机，只能编译 + 冒烟 + 布局代码走查；QUERY 状态渲染逻辑按协议字段实现。</li>
+<li>布局美观为本次重点，完成后如可运行可在界面上目视确认分区对称。</li>
+</ul>
+</div>
+
+<hr>
+
+<div class="box ok">
+<b>计划要点</b>：只重构 <b>ZLR5401 → 电机 Tab</b> 为 5 个带边框分区（速度/转矩/控制/状态/工具组），按需求明确定义布局与边框文字，正转/停止/反转颜色区分，状态区新增获取按钮渲染 QUERY 结果。<b>纯 UI 布局重构</b>，协议/槽逻辑/接口均不变。<b>等待确认。</b>
+</div>
+
+</body>
+</html>
