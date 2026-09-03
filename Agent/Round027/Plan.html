@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Round027 计划 — 开锁器 UI: 一键解锁等待 + 5s 进度轮询 + 停止</title>
+<style>
+  body { font-family:"PingFang SC","Microsoft YaHei",sans-serif; max-width:1120px; margin:0 auto; padding:24px 32px; color:#2a2438; line-height:1.75; background:#faf8fc; }
+  h1 { color:#5a3a8a; border-bottom:3px solid #b8a0d8; padding-bottom:8px; }
+  h2 { color:#6a4a9a; margin-top:30px; border-left:5px solid #b8a0d8; padding-left:10px; }
+  h3 { color:#7a5aaa; margin-top:18px; }
+  code { background:#ede6f4; padding:1px 6px; border-radius:4px; font-family:"JetBrains Mono",Consolas,monospace; font-size:0.9em; }
+  pre { background:#1e1a2e; color:#e0d8f0; padding:14px 18px; border-radius:8px; overflow-x:auto; font-size:0.83em; line-height:1.5; }
+  table { border-collapse:collapse; width:100%; margin:10px 0; }
+  th,td { border:1px solid #c8b8e0; padding:7px 11px; text-align:left; vertical-align:top;; }
+  th { background:#d8c8f0; color:#4a2a7a; }
+  tr:nth-child(even){ background:#f0eaf8; }
+  .ok { color:#2a8000; font-weight:bold; }
+  .warn { color:#c07020; font-weight:bold; }
+  .box { border:1px solid #c8b8e0; border-radius:8px; padding:10px 16px; margin:12px 0; background:#fff; }
+  .box.ok { border-color:#a0d8a0; background:#f5fff5; }
+  ul . { margin:6px 0; padding-left:22px; } li { margin:3px 0; }
+  .small { color:#706080; font-size:0.88em; }
+  .step { background:#f6f2fb; border-left:4px solid #8a6ab0; padding:8px 14px; margin:10px 0; border-radius:0 6px 6px 0; }
+  .step b { color:#5a3a8a; }
+</style>
+</head>
+<body>
+
+<h1>Round027 计划 — 开锁器 UI: 一键解锁等待 + 5s 进度轮询 + 停止</h1>
+<p class="small">依据：<code>/Users/swnw/Documents/Software/ZLR5401/Protocol/App_Locker_Report.html</code> &nbsp;|&nbsp; 状态：<b>等待确认，计划不执行</b></p>
+
+<div class="box">
+<b>需求</b>
+<ul>
+<li>开锁器 Tab 增加「解锁区」GroupBox，含<b>期望EPC输入框 + demagCnt SpinBox + 解锁按钮</b>。</li>
+<li>点击「解锁」→ 下发 <code>LOCKER_SUB_ONE_SHOT (0x08)</code> 后弹<b>模态等待框</b>（阶段/保持ms/步数/标签在场/消磁数 + 旋转图标）。</li>
+<li><b>5s QTimer 轮询 <code>GET_PROGRESS (0x09)</code></b> 更新等待框显示。</li>
+<li>等待框含<b>「停止」按钮</b> → 发 <code>CANCEL (0x04)</code> → 收 <code>endReason=6 ABORTED</code> 后关闭。</li>
+<li>ONE_SHOT 原帧到达（最长60s）→ 关闭等待框，渲染进开锁器输出区。</li>
+</ul>
+</div>
+
+<h2>一、协议要点（§五 + §五.4 + §五.5）</h2>
+<table>
+<tr><th>字段</th><th>值</th></tr>
+<tr><td>请求 <code>0x08</code></td><td><code>[cmd=0x08, tmoL,tmoH, holdL,holdH, epcLen, epc…, (demagCnt)]</code></td></tr>
+<tr><td>响应 err</td><td>0=OK / 1=BUSY / 2=PARAM / 3=UHF_OPEN / 4=UHF_LINK / 5=NO_TAG / 6=MISMATCH / 7=HOMING / 8=MOTOR_FAULT / 9=MOTOR_TIMEOUT / 10=AM_LINK</td></tr>
+<tr><td>endReason</td><td>1=TAG_REMOVED / 2=HOLD_TIMEOUT / 3=TAG_CHANGED / 4=UHF_LOST / <b>5=DEMAG_DONE</b> / <b>6=ABORTED</b></td></tr>
+<tr><td>GET_PROGRESS <code>0x09</code></td><td><code>[cmd,err,phase,holdMs(2),steps(2),tagPresent,demagDone,epcLen,epc…]</code></td></tr>
+<tr><td>phase</td><td>0=无流程 1=前置 2=UHF就绪 3=盘点 4=升起 5=保持期 6=回降</td></tr>
+</table>
+
+<h2>二、目标 UI</h2>
+<pre>
+开锁器 Tab 第一行 (清新区|操作区) 二等分:
+   清新区: 软标总数 / 硬标签EPC (清单) / 配置清单 / 追加硬标
+   操作区: 开始 / 取消 / 查询 / 取事件
+
+<b>新增第一行清区上方「解锁区」GroupBox</b> (边框"解锁"):
+   期望 EPC (单独输入框, 区别于清单区的"硬标签EPC")
+   demagCnt [spin]  默认 0 (跳过消磁)
+   [解锁] 按钮  (主操作色 zlrAmMain)
+</pre>
+
+<h2>三、模态等待对话框</h2>
+<pre>
+┌──── 等待解锁中 ──────────────┐
+│   ⟳  (旋转动画图标)            │
+│                              │
+│ 阶段: 保持期                 │
+│ 保持时间: 1234ms / 30000ms  │
+│ 步数:   5678 微步            │
+│ 标签在场: 是                 │
+│ 已消磁: 0 / 0              │
+│                              │
+│  [停止]                      │
+└──────────────────────────────┘
+  - 模态 (setModal)
+  - 不可关 (Qt.ApplicationModal)
+  - 旋转动画: QMovie 或 QTimer + QPainter (QMovie 加载旋转 gif 不易; 用 QTimer repaint + QPainter 简单箭头旋转)
+  - 5s 定时 (QTimer interval=5000ms, 父对象=对话框, 重复触发 GET_PROGRESS 0x09)
+  - 「停止」 → 发 CANCEL(0x04) → 等 ≤1s 后强制关闭对话框 + 关闭定时器
+</pre>
+
+<h2>四、修改清单</h2>
+<table>
+<tr><th>文件</th><th>动作</th><th>影响</th></tr>
+<tr><td><code>src/MainWindow.h</code></td><td>新增 <code>m_zlrLockerUnlockEpc</code>/<code>m_zlrLockerDemagCnt</code> 输入框; <code>LockerWaitDialog</class</code> 自定义模态类; <code>onLockerOneOne</code>/<code>onLockerProgress</code>/<code>onLockerCancelUnlock</code> 槽; <code>onLockerOneOneResult</code> 一次性结果回调。</td><td><span class="ok">否</span></td></tr>
+<tr><td><code>src/MainWindow.cpp</code></td><td>①开锁器 Tab 新增「解锁」分组;②<code>onLockEROneOne</code> 下发 ONE_SHOT 并弹等待框 + 启 5s 定时;③等待框内 progress 渲染;④ONE_SHOT 完成/中途响应统一到 onLockerOneOneResult;⑤停止按钮 → onLockerCancelUnlock → 发 CANCEL。</td><td><span class="ok">否</span></td></tr>
+</table>
+<p class="小仅 UI + 与 ONE_SHOT/CANCEL/GET_PROGRESS 命令交互。不改协议、Win 接口零影响。</p>
+
+<h2>五、执行步骤</h2>
+<div class="step"><b>0 备份</b>: <code>./backup.sh "Round027: 开锁器UI-一键解锁等待"</code>。</div>
+<div class="step"><b>1 头文件</b>: 添加 LockerWaitDialog (派生自 QDialog)、新成员、槽。</div>
+<div class="step"><b>2 cpp</b>: ①解锁区 GroupBox;②<核 onLockerOneOne 构造请求帧 + 弹对话框 + 启 5s 定时;③onLockerProgress 处理 GET_PROGRESS 响应;④onLockerOneOneResult 处理最终响应;⑤onLockerCancelUnlock 发 CANCEL。</div>
+<div class="step"><b>3 样式</b>: 对话框旋转动画背景色、停止按钮警示色。</div>
+<div class="step"><b>4 编译</b>: 零错误零警告。</div>
+<div class="step"><b>5 冒烟</b>: offscreen 5s 无崩溃 (无设备、ONE_SHOT/CANCEL/GET_PROGRESS 不点击)。</div>
+<div class="step"><b>6 打包</b>: pack.sh 更新。</div>
+<div class="step"><b>7 报告</b>: Report.html。</div>
+
+<h2>六、重要设计决定</h2>
+<ul>
+<li><b>期望 EPC 与"清单区"硬标签 EPC 独立</b>: 清单区的 EPC 是 “清单追加” 用, 解锁区的 EPC 是“一次性解锁期望」用, 不复用。</li>
+<li><b>demagCnt=0 默认</b>: 跳过消磁, 仅做 UHF 标签在场监控 + 升起+保持+回降。</li>
+<li><b>ONE_SHOT 原超时</b>:  sendZlrSubCmd 默认 3000ms 不够 (保持期 0~30s), 需传 60000ms。</li>
+<li><b>GET_PROGRESS 轮询超时</b>: 5s 间隔, sendZlrSubCmd 超时 设 3000ms (设备响应快)。</li>
+<li><b>停止 → CANCEL</b>:  设备协议§五.5 明确支持; CANCEL 命令发送后 等待框 另起一个 1s 定时超时强制关闭 (避免 CANCEL 后 等不到 ONE_SHOT 原帧)。</li>
+</ul>
+
+<hr>
+<div class="box ok">
+<b>计划要点</b>: 纯 UI/交互扩展, 仅新增「解锁区」GroupBox + 模态等待对话框 + 5s 轮询 + 停止按钮。依据 §五/§五.4/§五.5实现, 不动协议/其他 Tab/Win。<b>等待确认后执行</b>。
+</div>
+
+</body>
+</html>

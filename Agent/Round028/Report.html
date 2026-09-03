@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Round028 报告 — 握手启用按钮 + 自检 Tab 表格化</title>
+<style>
+  body { font-family:"PingFang SC","Microsoft YaHei",sans-serif; max-width:1120px; margin:0 auto; padding:24px 32px; color:#2a2438; line-height:1.75; background:#faf8fc; }
+  h1 { color:#5a3a8a; border-bottom:3px solid #b8a0d8; padding-bottom:8px; }
+  h2 { color:#6a4a9a; margin-top:30px; border-left:5px solid #b8a0d8; padding-left:10px; }
+  h3 { color:#7a5aaa; margin-top:18px; }
+  code { background:#ede6f4; padding:1px 6px; border-radius:4px; font-family:"JetBrains Mono",Consolas,monospace; font-size:0.9em; }
+  pre { background:#1e1a2e; color:#e0d8f0; padding:14px 18px; border-radius:8px; overflow-x:auto; font-size:0.83em; line-height:1.5; }
+  table { border-collapse:collapse; width:100%; margin:10px 0; }
+  th,td { border:1px solid #c8b8e0; padding:7px 11px; text-align:left; vertical-align:top; }
+  th { background:#d8c8f0; color:#4a2a7a; }
+  tr:nth-child(even){ background:#f0eaf8; }
+  .ok { color:#2a8030; font-weight:bold; }
+  .warn { color:#c07020; font-weight:bold; }
+  .box { border:1px solid #c8b8e0; border-radius:8px; padding:10px 16px; margin:12px 0; background:#fff; }
+  .box.ok { border-color:#a0d8a0; background:#f5fff5; }
+  ul { margin:6px 0; padding-left:22px; } li { margin:3px 0; }
+  .small { color:#706080; font-size:0.88em; }
+</style>
+</head>
+<body>
+
+<h1>Round028 报告 — 握手启用按钮 + 自检 Tab 表格化</h1>
+<p class="small">需求：<code>Agent/Round028/Demand.md</code> &nbsp;|&nbsp; 执行时间：2026-09-01 &nbsp;|&nbsp; 状态：<b>已执行并通过编译+冒烟</b></p>
+
+<div class="box ok">
+<b>总评</b>
+<ul>
+<li>握手成功后按 SW 字段启用 Supported Devices 按钮 (ZLR5401/SCCD 互斥, 不匹配则全禁用, 不匹配区域自动隐藏)。</li>
+<li>自检 Tab 改为<b>3 列 7 行 QTableWidget</b>直接渲染错误位/诊断快照, 错红正绿; 移除输出区 QTextEdit (全部走表格)。</li>
+<li>RGB Tab 保持独立 (本轮按默认方案未合并); 自检与 RGB 仍各为一 Tab, 已在 header 注明可后续合并。</li>
+<li>纯 UI/握手逻辑改动, 协议帧/槽签名/Win 零影响。</li>
+</ul>
+</div>
+
+<h2>一、需求落实对照</h2>
+<table>
+<tr><th>需求</th><th>实现</th></tr>
+<tr><td>1 握手启用按钮 (ZLR5401 / SCCD 互斥)</td><td class="ok">✅ 新增 <code>enableSuppBySw(QString swText)</code>; 握手成功后调用 → SW 以 "ZLR5401" 开头启用 ZLR5401 灰禁用 Sccd, "SCCD" 开头反之, 其它/空全禁用+隐藏区域</td></tr>
+<tr><td>2 自检+RGB 归为系统类, 表格化, 错误报红</td><td class="ok">✅ 自检 Tab 移除输出区 QTextEdit, 改为 QTableWidget(字段/值/状态 3 列 × 7 行) 直接渲染; 异常行红底红字+粗体, 正常行绿字</td></tr>
+<tr><td>2 自检+RGB 合并为"系统" Tab</td><td class="warn">⏸️ 本轮按默认方案未合并 (RGB 仍为独立 Tab); 已记录待后续合并为系统 Tab</td></tr>
+</table>
+
+<h2>二、握手启用按钮逻辑 (enableSuppBySw)</h2>
+<pre>
+SW 以 "ZLR5401" 开头 (前缀匹配):
+  m_sccdBtn->setEnabled(false); m_sccdBtn->setChecked(false);  // Sccd 区域隐藏
+  m_zlrBtn ->setEnabled(true);  m_zlrBtn ->setChecked(true);   // ZLR5401 区域自动展开
+SW 以 "SCCD"    开头:
+  m_sccdBtn->setEnabled(true);  m_sccdBtn->setChecked(true);
+  m_zlrBtn ->setEnabled(false); m_zlrBtn ->setChecked(false);
+其它 / 空:
+  两个都 setEnabled(false) + setChecked(false) (握手前默认)
+</pre>
+
+<p><b>触发点</b>: 握手成功后 ([`onHandshakeResponse`](src/MainWindow.cpp)) 解析 DEVICE_INFO 拿到 SW 字段, 立即调 <code>enableSuppBySw(sw)</code>; 断开重置时 ([`resetUiToInitialState`](src/MainWindow.cpp)) 调 <code>enableSuppBySw("")</code> 全禁用.</p>
+
+<h2>三、自检 Tab 表格化 (QTableWidget)</h2>
+<table>
+<tr><th>字段 (列1)</th><th>值 (列2)</th><th>状态 (列3)</th></tr>
+<tr><td>锁存错误位(16bit)</td><td>0xXXXX  + bit0~5 名称展开</td><td>=0 绿✓正常, ≠0 红✗异常</td></tr>
+<tr><td>motorCommOk</td><td>1 / 0</td><td>1 绿, 0 红</td></tr>
+<tr><td>drvFault</td><td>0xXX (DRV8434S 故障寄存器)</td><td>=0 绿, ≠0 红</td></tr>
+<tr><td>uhfLink</td><td>0/1/2 (正常/超时/CRC错)</td><td>=0 绿, ≠0 红</td></tr>
+<tr><td>amLink</td><td>0/非0</td><td>=0 绿, ≠0 红</td></tr>
+<tr><td>paramCrc</td><td>0/1 (1=曾 CRC 失败回落默认值)</td><td>0 绿, 1 红</td></tr>
+<tr><td>switchErr</td><td>0xXX (行程开关错误位)</td><td>=0 绿, ≠0 红</td></tr>
+</table>
+
+<p>异常行: 整行红底 (<code>#fdecea</code>), 状态列红字+粗体; 正常行: 状态列绿字.</p>
+
+<h2>四、改动清单</h2>
+<table>
+<tr><th>文件</th><th>改动</th></tr>
+<tr><td><code>src/MainWindow.h</code></td><td>新增 <code>enableSuppBySw(QString)</code> 方法; 新增 <code>m_zlrSelfTable</code>(QTableWidget*) 替换自检 Label; 旧 <code>m_zlrSelfErrBitsLabel</code>/<code>m_zlrSelfDiagLabel</code>/<code>m_zlrSelfOut</code> 保留 (setVisible(false) 或仅供兼容).</td></tr>
+<tr><td><code>src/MainWindow.cpp</code></td><td>①自检 Tab setupUI: <code>QTableWidget</code> 替换两个 QLabel, 移除输出区 QTextEdit; ②握手 DEVICE_INFO 回调调 <code>enableSuppBySw(sw)</code>; ③<code>resetUiToInitialState</code> 调 <code>enableSuppBySw("")</code>; ④新增 <code>enableSuppBySw</code> 实现 (ZLR5401/SCCD 互斥); ⑤<code>onSelfTestQuery</code>/<code>Rerun</code>/<code>Clear</code> 改为填表格 (错红正绿).</td></tr>
+</table>
+
+<h2>五、关键技术点</h2>
+<ul>
+<li><b>SW 前缀匹配大小写不敏感</b>: <code>swText.trimmed().toUpper()</code> 后再 startsWith, 防 "zlr5401_v1.0" 等大小写不一致.</li>
+<li><b>不匹配区域自动隐藏</b>: setEnabled(false) + setChecked(false) → 触发 onSccdToggle/onZlrToggle 自动 hide 对应 GroupBox.</li>
+<li><b>自检表格三色规则</b>: 异常=红底红字粗体, 正常=绿字, 中性(读取中)=黑字. 与 SCCD/ZLR 同步响应"绿色=OK, 红色=异常"颜色系统.</li>
+<li><b>旧 Label 保留兼容</b>: 不删除 m_zlrSelfErrBitsLabel/DiagLabel 成员, 仅 setVisible(false). 后续若需重构可彻底删除.</li>
+</ul>
+
+<h2>六、验证</h2>
+<pre>
+--- Mac 编译 ---
+[100%] Built target SwComForTool      <span class="ok">零错误 零警告</span>
+(中间修复 QString("#fdecea)) 缺 ) 闭合错误)
+--- 冒烟启动 (offscreen) ---
+启动 5s 进程存活, 无崩溃 (握手逻辑 / 自检 Tab 表格构造正常)  <span class="ok">PASS</span>
+--- 自包含打包 ---
+rpath=@executable_path/../Frameworks  <span class="ok">可移植</span>
+codesign --verify --deep --strict 通过  <span class="ok">SIGN_OK</span>
+产物: issue/Mac_Arm64/SwComForTool.app + issue/SwComForToolV1.1.0_macOS.zip (62M)
+</pre>
+
+<h2>七、备份</h2>
+<ul>
+<li>变更前全量快照: <code>/Volumes/Record/Person Code/BackupArea/ComforTool/Round_091_20260901_225211</code> (342M ≤500M OK, 轮转删除 Round_082).</li>
+<li>本轮无文件删除, TrashCan 不新增.</li>
+</ul>
+
+<hr>
+<div class="box ok">
+<b>结论</b>: Round028 完成. 握手后按 SW 字段互斥启用 ZLR5401/SCCD 按钮; 自检 Tab 表格化, 错红正绿; 输出区移除. 待真机验证 (接入 ZLR5401_V1.0 看 ZLR5401 区自动展开; 接入 SCCD_V1.0 看 SCCD 区自动展开).
+</div>
+
+</body>
+</html>

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Round029 计划 — ZLR 分区 UI 精简 + 整体布局优化</title>
+<style>
+  body { font-family:"PingFang SC","Microsoft YaHei",sans-serif; max-width:1120px; margin:0 auto; padding:24px 32px; color:#2a2438; line-height:1.75; background:#faf8fc; }
+  h1 { color:#5a3a8a; border-bottom:3px solid #b8a0d8; padding-bottom:8px; }
+  h2 { color:#6a4a9a; margin-top:30px; border-left:5px solid #b8a0d8; padding-left:10px; }
+  h3 { color:#7a5aaa; margin-top:18px; }
+  code { background:#ede6f4; padding:1px 6px; border-radius:4px; font-family:"JetBrains Mono",Consolas,monospace; font-size:0.9em; }
+  pre { background:#1e1a2e; color:#e0d8f0; padding:14px 18px; border-radius:8px; overflow-x:auto; font-size:0.83em; line-height:1.5; }
+  table { border-collapse:collapse; width:100%; margin:10px 0; }
+  th,td { border:1px solid #c8b8e0; padding:7px 11px; text-align:left; vertical-align:top; }
+  th { background:#d8c8f0; color:#4a2a7a; }
+  tr:nth-child(even){ background:#f0eaf8; }
+  .ok { color:#2a8030; font-weight:bold; }
+  .warn { color:#c07020; font-weight:bold; }
+  .bad { color:#c03030; font-weight:bold; }
+  .box { border:1px solid #c8b8e0; border-radius:8px; padding:10px 16px; margin:12px 0; background:#fff; }
+  .box.ok { border-color:#a0d8a0; background:#f5fff5; }
+  .box.warn { border-color:#e0c090; background:#fffaf2; }
+  .small { color:#706080; font-size:0.88em; }
+  ul { margin:6px 0; padding-left:22px; } li { margin:3px 0; }
+  .hr { border:0; border-top:2px dashed #c8b8e0; margin:26px 0; }
+  .step { background:#f6f2fb; border-left:4px solid #8a6ab0; padding:8px 14px; margin:10px 0; border-radius:0 6px 6px 0; }
+  .step b { color:#5a3a8a; }
+  .keep { color:#2a8030; } .drop { color:#c03030; } .ban { color:#c07020; }
+</style>
+</head>
+<body>
+
+<h1>Round029 计划 — ZLR 分区 UI 精简 + 整体布局优化</h1>
+<p class="small">需求：<code>Agent/Round029/Demand.md</code> &nbsp;|&nbsp; 状态：<b>等待确认，计划不执行</b> &nbsp;|&nbsp; 版本：<b>v1</b> &nbsp;|&nbsp; 变更前快照：<code>Round_126_20260903_210635</code>（已落盘）</p>
+
+<div class="box">
+<b>需求复述</b>
+<ul>
+<li><b>D1</b> ZLR 中，UHF 下控制区域，仅保留<b>盘点、状态获取、天线检测</b></li>
+<li><b>D2</b> 读写区域暂时<b>封禁不可用</b></li>
+<li><b>D3</b> AM 中仅保留<b>配置区</b>，其他关闭（<b>代码保留只是不显示</b>）</li>
+<li><b>D4</b> 开锁器中仅保留<b>解锁和操作栏目</b></li>
+<li><b>D5</b> UI 显示过长：最大化时 <b>LOG 区显示不完整</b>，优化整体布局</li>
+</ul>
+</div>
+
+<h2>一、现状调查（MainWindow.cpp setupUI）</h2>
+
+<h3>1.1 ZLR5401 区结构（m_zlrBox → m_zlrTabs，6 个页）</h3>
+<table>
+<tr><th>页</th><th>区块（QGroupBox）</th><th>内容</th><th>行号</th></tr>
+<tr><td rowspan="3">电机</td><td>速度 / 转矩 / 其他</td><td>行 1 三等分</td><td>L826</td></tr>
+<tr><td>控制 / 行程测试</td><td>行 2 二等分</td><td>L904</td></tr>
+<tr><td>输出区</td><td>文本输出</td><td>L966</td></tr>
+<tr><td>RGB</td><td>颜色 / 控制</td><td>行 1 二等分</td><td>L987</td></tr>
+<tr><td>自检</td><td>错误位 / 操作</td><td>行 1 二等分</td><td>L1044</td></tr>
+<tr><td rowspan="5">UHF</td><td>配置</td><td>EPC / Bank / Addr / Cnt 输入 + 参数</td><td>L1129</td></tr>
+<tr><td><b>控制</b></td><td>7 按钮：开启 / 关闭 / <b>盘点</b> / 查询 / 取标签 / <b>读状态</b> / <b>天线检测</b></td><td>L1178-1207</td></tr>
+<tr><td><b>扫描</b></td><td>周期(ms) spin + 自动扫描 / 停扫描 / 诊断</td><td>L1216-1240</td></tr>
+<tr><td><b>读写</b></td><td>读标签 / 写标签 + 提示</td><td>L1243-1260</td></tr>
+<tr><td>标签列表 / 输出区</td><td>盘点结果表格（双击 EPC 填入）+ 文本输出</td><td>L1268-1303</td></tr>
+<tr><td rowspan="4">AM</td><td><b>配置</b></td><td>10 参数网格 + 读配置 / 写配置</td><td>L1346</td></tr>
+<tr><td>监控</td><td>查询 / 监控状态 / 切模式 / 波形采集 / 取波形页</td><td>L1372</td></tr>
+<tr><td>波形</td><td>波形输出文本</td><td>L1408</td></tr>
+<tr><td>输出区</td><td>文本输出</td><td>L1420</td></tr>
+<tr><td rowspan="4">开锁器</td><td><b>解锁</b></td><td>期望EPC（1~4 张）+ 软标数 + 解锁按钮（UNLOCK_MULTI 唯一通道）</td><td>L1442</td></tr>
+<tr><td>清单</td><td>软标总数 / 硬标签EPC / 配置清单 / 追加硬标（编排模式入口）</td><td>L1476</td></tr>
+<tr><td><b>操作</b></td><td>开始 / 取消 / 查询 / 取事件（编排模式运行控制）</td><td>L1503</td></tr>
+<tr><td>输出区</td><td>解锁/事件结果输出</td><td>L1529</td></tr>
+</table>
+
+<h3>1.2 主窗口纵向栈与 LOG 显示不全的根因</h3>
+<pre>mainLayout (QVBoxLayout, 6px 边距)
+ ├ Handshake Area        (固定行)
+ ├ Function Area         (固定行)
+ ├ Tool                  (固定行)
+ ├ Supported Devices     (固定行)
+ ├ Version               (固定行)
+ ├ Sccd Area             (m_sccdBox, 默认隐藏, 可展开)
+ ├ ZLR5401 Area          (m_zlrBox, 默认隐藏, 可展开) ← 展开后占高最大
+ ├ 通信调试面板           (默认隐藏)
+ └ logSplitter (stretch=1): Exporting Area + Log Area</pre>
+<p><b>根因</b>：<code>m_zlrBox</code> 的 6 个页内容全部为固定高度组合，Preferred 高度 ≈ 600~800px；上方 5 个区无高度上限，<code>m_zlrBox</code> 又未做尺寸约束（L1544-1545 显式设 Preferred）。最大化时若屏幕总高 &lt; 上方栈最小高度和，<code>logSplitter</code>（stretch=1）被上方各区的 minimumSizeHint 挤压 → LOG 区只剩几行甚至不可见。另有：SCCD 与 ZLR 同时展开时更甚。</p>
+
+<h2>二、改造方案</h2>
+
+<div class="step"><b>D1 — UHF 控制区仅留 盘点 / 状态获取 / 天线检测</b>
+<ul>
+<li>控制区保留 3 按钮：<code>m_zlrUhfInvBtn</code>(盘点→onUhfInventory)、<code>m_zlrUhfStatusBtn</code>(读状态→onUhfGetStatus，即"状态获取")、<code>m_zlrUhfAntBtn</code>(天线检测→onUhfCheckAnt)，单行排列。</li>
+<li>隐藏 4 按钮：<code>m_zlrUhfOpenBtn / m_zlrUhfCloseBtn / m_zlrUhfQueryBtn / m_zlrUhfGetTagsBtn</code> — <code>setVisible(false)</code>，connect 与槽函数<b>全部保留</b>。</li>
+<li><b>周期(ms) spin 迁移</b>：<code>onUhfInventory</code> 以 <code>m_zlrUhfCycle</code> 值为盘点超时参数（L2705），扫描区隐藏后用户无处可调 → 把周期输入行移入控制区（盘点按钮旁），不新增成员。</li>
+</ul></div>
+
+<div class="step"><b>D2 — 读写区封禁不可用（可见但禁用）</b>
+<ul>
+<li><code>rwBox</code> 标题改为「读写（已封禁）」，<code>m_zlrUhfReadBtn / m_zlrUhfWriteBtn</code> <code>setEnabled(false)</code>，提示标签改为「读写功能暂时封禁」。</li>
+<li>选择<b>可见+禁用</b>而非隐藏：需求用词"封禁"意为存在但不可用，保留区块可见让用户知道功能存在；后续解封只需恢复 enable/文案，一行改动。</li>
+</ul></div>
+
+<div class="step"><b>D3 — AM 仅留配置区</b>
+<ul>
+<li>保留：「配置」区（10 参数网格 + 读配置 / 写配置）。</li>
+<li>隐藏（代码保留只是不显示）：<code>monBox</code>(监控)、<code>waveBox</code>(波形)、AM 输出区 — <code>setVisible(false)</code>；成员（<code>m_zlrAmQueryBtn</code> 等）与槽函数不动。</li>
+<li>注意：AM 输出区隐藏后，写配置的回读结果显示走主 LOG 区（<code>appendSystemLog</code> 路径已有），不丢信息。</li>
+</ul></div>
+
+<div class="step"><b>D4 — 开锁器仅留解锁 + 操作</b>
+<ul>
+<li>保留：「解锁」（UNLOCK_MULTI，唯一开锁通道）、「操作」（取消 / 查询 / 取事件）。</li>
+<li>隐藏：「清单」区（<code>lstBox</code>，编排模式 CONFIGURE/ADD 入口）— <code>setVisible(false)</code>；成员与槽保留。</li>
+<li>「输出区」<b>建议保留</b>：解锁推送事件（✓确认/✗失配/软标）与终帧结果当前写入 <code>m_zlrLockerOut</code>，隐藏会丢失业务结果的主要展示位（主 LOG 区只有单行摘要）。<span class="warn">如你希望严格按字面把输出区也去掉，回复时注明即可。</span></li>
+<li>连带说明：「操作」区的「开始」依赖清单区已 CONFIGURE——清单区隐藏后「开始」实际不可用，计划将其一并 <code>setEnabled(false)</code>（保留取消/查询/取事件，它们对 UNLOCK_MULTI 流程仍有意义）。</li>
+</ul></div>
+
+<div class="step"><b>D5 — 布局优化（LOG 区最大化可见）</b>
+<ul>
+<li><b>核心改动</b>：把 <code>m_sccdBox</code> 与 <code>m_zlrBox</code> 分别包进 <code>QScrollArea</code>（widgetResizable=true，无边框透明背景），新的成员 <code>m_sccdScroll / m_zlrScroll</code> 加入 <code>mainLayout</code>。内容超出配给高度时<b>面板内部滚动</b>，不再向下挤压 LOG 区。</li>
+<li>显隐切换点跟随调整：L2345/L2359 的 toggle 由操作 <code>m_sccdBox / m_zlrBox</code> 改为操作 scroll 包装器（共 2 处 + 默认隐藏 2 处）。</li>
+<li>LOG 区保底：<code>m_logDisplay</code> 设 <code>setMinimumHeight(120)</code>，配合 logSplitter stretch=1，任何情况下 LOG 至少可见 ~5 行。</li>
+<li>微调：<code>resize(960, 540)</code> → <code>resize(1080, 720)</code>（初始默认给足可视高度）。</li>
+<li>不动的部分：Handshake/Function/Tool/Supported/Version 各区、Exporting Area、通信调试面板——需求未涉及，保持原样。</li>
+</ul></div>
+
+<h2>三、需求边界内的处理说明（未越权的部分）</h2>
+<div class="box">
+<ul>
+<li><b>电机 / RGB / 自检 页不动</b>——需求 D1-D4 只点名 UHF / AM / 开锁器。</li>
+<li><b>UHF「配置」区（EPC/Bank/Addr/Cnt）保留</b>——需求只点名"控制区域"与"读写区域"；配置区虽主要服务读写，但盘点结果表格"双击填入"也用到 EPC 输入，且隐藏它超出需求字面范围。<span class="warn">若也想封禁配置区，回复注明。</span></li>
+<li><b>UHF 标签列表 / 输出区保留</b>——盘点结果展示位，属于"盘点"功能的组成部分。</li>
+<li><b>开启/关闭按钮隐藏的前置依赖</b>：设备侧 POST 后 UHF 自动上电并恢复配置（App_Unlock_Flow §2、Round_098 #9），直接盘点可用；若 UHF 意外关闭，隐藏后无 UI 重新开启——异常场景可通过"通信调试面板"手动发 0x0B/0x01，或后续加恢复开关（见优化建议）。</li>
+</ul>
+</div>
+
+<h2>四、优化建议（可选，默认不做）</h2>
+<div class="box warn">
+<ol>
+<li><b>精简开关</b>：在 Tool 区加一个隐藏入口（如长按标题 / 右键菜单「显示全部区域」），随时恢复被精简的区块用于调试——比纯 setVisible(false) 多 ~15 行，不改变默认视图。</li>
+<li><b>读写封禁与配置区联动</b>：封禁期间配置区的 Bank/Addr/Cnt 输入对用户无意义，可一并灰显，视觉更干净。</li>
+<li><b>窗口标题栏显示当前展开的设备区</b>（ZLR/SCCD），长会话不用来回滚动确认。</li>
+</ol>
+</div>
+
+<h2>五、验证计划（确认后执行）</h2>
+<div class="box ok">
+<ol>
+<li>构建通过（Release, 无 warning）。</li>
+<li>手动检查：ZLR 展开 → UHF 页仅 控制区 3 按钮+周期 / 配置区 / 标签列表 / 输出区 / 读写(已封禁灰显)；AM 页仅配置区；开锁器页 解锁+操作+输出，无清单区；电机/RGB/自检 原样。</li>
+<li>布局：最大化窗口 + ZLR 展开 → LOG 区完整可见（≥120px 且可滚动）；ZLR 内容超高时面板内部滚动。</li>
+<li>功能回归：盘点 → 表格出标签；天线检测 / 读状态有回显；解锁（单张 EPC）→ UNLOCK_MULTI 流程正常；停止/取消正常。</li>
+<li>断连复位：拔设备 → ZLR 区收起、UI 复位路径不受 scroll 包装影响。</li>
+</ol>
+</div>
+
+<h2>六、风险与回滚</h2>
+<div class="box">
+<ul>
+<li>所有精简均为 <code>setVisible(false)</code> / <code>setEnabled(false)</code> 级改动，<b>不删除任何控件、连接与槽</b>，恢复 = 改回 true，风险低。</li>
+<li>scroll 包装涉及 4 处显隐调用点（已全部定位：L403/L809/L2345/L2359），无其他引用 <code>m_zlrBox/m_sccdBox</code> 的显隐逻辑。</li>
+<li>回滚：快照 <code>/Volumes/Record/Person Code/BackupArea/ComforTool/Round_126_20260903_210635</code> 全量覆盖即可。</li>
+</ul>
+</div>
+
+<h2 class="hr">追加 v2 — 确认结论（2026-09-03）</h2>
+<div class="box ok">
+<b>v2 用户确认决议</b>
+<ul>
+<li><b>ZLR5401 Area 标题去版本</b>：握手后不再拼 <code>— ZLR5401_V1.0</code>，恒为 <code>"ZLR5401 Area"</code>（实现于握手成功分支 L2298；<code>resetUiToInitialState</code> 已保持）。</li>
+<li><b>1,2,3 执行</b>：D1/D2/D3 全部按计划实施（D1 控制区仅 盘点/读状态/天线检测 + 周期迁入；D2 读写区可见但禁用+标注“读写 - 已封禁”；D3 AM 仅配置区）。</li>
+<li><b>解锁弹窗：实时状态文字即可，不增加进度条</b>：保留现有 <code>updateProgress()</code> 阶段+保持时间文本行 与 <code>updateEvent()</code> 推送事件文字行；不引入 <code>QProgressBar</code>。旋转动画保留作为“进行中”视觉反馈。</li>
+<li><b>3 条优化建议同步执行</b>：①右键恢复菜单（UHF扫描/读写/AM监控/波形/输出/开锁器清单）；②封禁联动：读写+配置区 Bank/Addr/Cnt/Data/设/读配置 一并灰显（EPC 保留供双击填入）；③窗口标题栏显示当前展开设备区（SwComForTool 1.0 (ZLR5401) / (ZLR5401 + Sccd) / 空）。</li>
+</ul>
+</div>
+
+<h2 class="hr">追加 v3 — 取消 QScrollArea, 紧凑全渲染 (2026-09-03)</h2>
+<div class="box warn">
+<b>v3 用户追改</b>：「Exporting Area + 通信调试 + Sccd/ZLR5401 开启后, Sccd/ZLR5401 全渲染不要滑动」。
+<ul>
+<li><b>取消 QScrollArea 包裹</b>: <code>m_sccdScroll</code>/<code>m_zlrScroll</code> 置 nullptr,直接 <code>mainLayout->addWidget(m_sccdBox/m_zlrBox)</code>。toggle 处加 null-check 兼容。</li>
+<li><b>紧凑渲染</b>(确保全展开时不再溢出):
+  <ul>
+    <li><code>zlrOuterLayout</code> margins 8,6,8,6 → <b>4,4,4,4</b>, spacing 6→4</li>
+    <li>电机/RGB/自检 Tab 内 margins 8,8,8,8 → <b>6,6,6,6</b>, spacing 8→6</li>
+    <li>所有 ZLR 区子 groupbox 内 margins 8,6,8,6 → <b>4,4,4,4</b> (19 处批量替换)</li>
+    <li>row1/row2 spacing 8 → <b>6</b></li>
+    <li>Tab 栏 padding 调小: <code>QTabBar::tab { padding: 4px 10px; }</code></li>
+  </ul>
+</li>
+<li><b>先前 v1 默认窗口 1080×720 保留</b>(Sccd+ZLR 全展开时最大化下完整可见)。</li>
+<li>LOG 区保底 120px 保留 (m_logDisplay minimumHeight)。</li>
+</ul>
+<b>验证</b>: 通信调试开启 → Sccd 展开 → ZLR 展开, 最大化窗口下所有面板完整渲染, 无 scroll 行为。
+</div>
+
+<h2 class="hr">追加 v4 — 协议 FC 重编号同步 (2026-09-03)</h2>
+<div class="box warn">
+<b>v4 用户追改</b>: <code>App_Protocol.html</code> 版本 3 (2026-09-03) 命令分层: 系统级 <code>0x01~0x09</code> + App 级 <code>0x20~0x26</code>。
+<ul>
+<li>FC 映射: 电机 <code>0x0A→0x20</code>、UHF <code>0x0B→0x21</code>、AM <code>0x0C→0x22</code>、LOCKER <code>0x0D→0x23</code>、RGB <code>0x0E→0x24</code>、SELFTEST <code>0x0F→0x25</code>。</li>
+<li>系统级 FC (0x01~0x09) 不变: 0x01 HANDSHAKE / 0x02 ENTER_BOOT / 0x07 DEVICE_INFO / 0x08 RESET / 0x09 EXIT_BOOT。</li>
+<li>Sccd FC (0x14 14443A / 0x15 15693 / 0x16 射频控制) 不变。</li>
+<li>子命令 / 事件码 / 响应布局 / 数据结构不变。</li>
+</ul>
+<b>工具侧</b>: 批量替换 <code>sendZlrSubCmd(0x0X, ...)</code> 与注释中 FC 字面 (<code>FC=0x0X</code> / <code>FC=0x0X/</code>) → 新编号; subcmd (0x01-0x0F)、事件码 (0x0B-0x0F LOCKER 推送) 保留。
+</div>
+
+<h2 class="hr">追加 v5 — Tab 重排版 (2026-09-03)</h2>
+<div class="box">
+<b>v5 用户追改</b>: 每大 Tab 限 2 行紧凑(主操作 + 输出), 溢出内容进子 QTabWidget。
+</div>
+<table>
+<tr><th>Tab</th><th>主操作(行 1+2)</th><th>输出区</th><th>子标签(溢出)</th></tr>
+<tr><td>电机</td><td>行 1: 速度+微步/转+设速度; 行 2: 角度°+转矩%+设转矩+正转+停止+反转</td><td>输出区</td><td>其他(查询/健康/统计/清除故障), 测试(行程)</td></tr>
+<tr><td>RGB</td><td>行 1: 颜色(绿/红/蓝)+控制(下发RGB/全灭); 行 2: 状态</td><td>—(合并到"状态")</td><td>— (无溢出)</td></tr>
+<tr><td>自检</td><td>错误位(QTableWidget) + 操作(查询/重探/掩码/清错误)</td><td>— (表内已含状态)</td><td>— (无溢出)</td></tr>
+<tr><td>UHF</td><td>行 1: 配置(功率/频段/EPC) + 控制(周期ms/盘点/读状态/天线检测); 行 2: 标签列表 + 输出区</td><td>输出区</td><td>读写(已封禁), 扫描(自动扫描/停/诊断)</td></tr>
+<tr><td>AM</td><td>行 1: 配置(10 参数网格+读/写配置); 行 2: 输出区</td><td>输出区</td><td>监控(查询/状态/切模式), 波形(采集/取页+波形输出)</td></tr>
+<tr><td>开锁器</td><td>行 1: 解锁(EPC+软标+按钮); 行 2: 操作(开始/取消/查询/取事件); 行 3: 输出区</td><td>输出区</td><td>清单(编排模式入口)</td></tr>
+</table>
+<p><b>实现</b>: 每个 Tab 内 `<code>auto *sub = new QTabWidget;</code>` + `QTabBar::tab { padding: 3px 10px; }`, 子页右键菜单可恢复 (D2 读写封禁/AM 监控/开锁器清单已通过右键菜单可恢复)。</p>
+
+<h2 class="hr">追加 v6 — UHF 配置/读写 + 开锁器 操作/清单 隐藏 (2026-09-03)</h2>
+<div class="box">
+<b>v6 用户追改</b>:
+<ul>
+<li>UHF <b>配置区隐藏</b>(功率/频段/EPC — 设备 POST 自动恢复, 无需手动)</li>
+<li>UHF <b>读写区隐藏不展示</b>(封禁功能不暴露)</li>
+<li>开锁器 <b>清单区</b>(软标总数/硬标签EPC/配置/追加 — 编排模式入口)隐藏</li>
+<li>开锁器 <b>操作区</b>(开始/取消/查询/取事件 — 编排模式运行控制)隐藏</li>
+</ul>
+</div>
+<table>
+<tr><th>Tab</th><th>v5 暴露</th><th>v6 暴露</th><th>v6 隐藏(右键恢复)</th></tr>
+<tr><td>UHF</td><td>配置(功率/频段/EPC) + 控制(盘点/读状态/天线检测) + 标签列表 + 输出区</td><td><b>仅控制 + 标签列表 + 输出区</b></td><td>配置 / 读写(封禁) / 扫描</td></tr>
+<tr><td>开锁器</td><td>解锁(EPC/软标/按钮) + 操作(开始/取消/查询/取事件) + 输出区</td><td><b>仅解锁 + 输出区</b></td><td>清单(编排入口) / 操作</td></tr>
+</table>
+<p><b>实现</b>: 所有隐藏区 GroupBox 仍构造并保存指针 (新增 <code>m_zlrUhfCfgBox</code>/<code>m_zlrLockerOpBox</code>), 仅 <code>setVisible(false)</code>; UHF 子 QTabWidget 整体移除 (无溢出); 右键恢复菜单 <code>showZlrTrimRestoreMenu()</code> 增加 "UHF 配置区" / "开锁器 操作区" 两项, 一键恢复。</p>
+
+<p class="small">Round029 · Plan v1→v2→v3→v4→v5→v6 · 2026-09-03 · UI精简+布局优化+协议同步+Tab重排版+UHF/开锁器深度隐藏全部完成</p>
+</body>
+</html>

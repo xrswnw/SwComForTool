@@ -16,6 +16,10 @@
 #include <QGroupBox>
 #include <QTableWidget>
 #include <QTimer>
+#include <QDialog>
+#include <QPainter>
+#include <QScrollArea>
+#include <functional>
 
 class ITransport;
 class SerialPortManager;
@@ -27,6 +31,24 @@ struct FrameData;   // 前置声明 (定义于 ProtocolParser.h), 供 handleZlrP
 
 // 通信接口类型
 enum class TransportType { Com, Usb };
+
+// 开锁器一键解锁 模态等待对话框 (Round027): 显示阶段/保持ms/步数/标签在场/消磁数 + 旋转动画 + 停止按钮
+class LockerWaitDialog : public QDialog
+{
+    Q_OBJECT
+public:
+    explicit LockerWaitDialog(QWidget *parent = nullptr);
+    // Round032: UNLOCK_MULTI 终态 (endReason: 1=ALL_OK 2=PARTIAL_TIMEOUT 4=UHF_LOST 6=ABORTED 7=SOFT_TIMEOUT);
+    //   进度动画与 GET_PROGRESS 轮询已废 — 弹窗仅展示设备推送事件 (0x0B~0x0F)
+    void updateFinalMulti(int endReason, int confirmed, int total, int bitmap, int softDone, int softCnt);
+    // Round105: 推送事件实时行 (0x0B 确认 / 0x0C 失配 / 0x0D 硬标完成 / 0x0E 软标 / 0x0F 受理)
+    void updateEvent(const QString &txt);
+signals:
+    // 用户按"停止" → MainWindow 发 CANCEL
+    void cancelRequested();
+private:
+    QString m_finalTxt;     // 终态描述 (成功/失败)
+};
 
 class MainWindow : public QMainWindow
 {
@@ -74,6 +96,8 @@ private slots:
     void updatePathLabel();             // 根据 m_hidDevices/m_selectedHudIdx 刷新 m_pathLabel 显示
     void onSccdToggle(bool checked);   // 切换 Sccd 区域显示/隐藏 + 按钮底色
     void onZlrToggle(bool checked);    // 切换 ZLR5401 区域显示/隐藏 + 按钮底色
+    void refreshWindowTitleArea();    // Round029 优化建议③: 窗口标题追加当前展开设备区
+    void showZlrTrimRestoreMenu();    // Round029 优化建议①: ZLR Area 右键菜单, 恢复被精简区域
     void on14443AInventory();          // 14443A: 盘点单标签 → makeRfidInventory → 填 UID
     void on14443AReadBlock();          // 14443A: 读块
     void on14443AWriteBlock();         // 14443A: 写块
@@ -107,7 +131,7 @@ private slots:
     void on14443AAuthKeyA();           // 14443A: KeyA 选中 (互斥)
     void on14443AAuthKeyB();           // 14443A: KeyB 选中 (互斥)
 
-    // ===== ZLR5401: 电机控制 (FC=0x0A) =====
+    // ===== ZLR5401: 电机控制 (FC=0x20) =====
     void onMotorMove(int dir);             // 公共 MOVE 流程 (dir 0=正 1=反)
     void onMotorMoveCw();              // 正转 MOVE dir=0
     void onMotorMoveCcw();             // 反转 MOVE dir=1
@@ -120,7 +144,7 @@ private slots:
     void onMotorHealth();              // HEALTH: 读健康/堵转监测
     void onMotorStats();               // STATS: 读运行统计
 
-    // ===== ZLR5401: UHF (FC=0x0B) =====
+    // ===== ZLR5401: UHF (FC=0x21) =====
     void onUhfOpen();                  // OPEN
     void onUhfClose();                 // CLOSE
     void onUhfInventory();             // INVENTORY
@@ -136,7 +160,7 @@ private slots:
     void onUhfScanStop();              // SCAN_STOP (停止自动扫描)
     void onUhfGetDump();               // GET_DUMP (诊断)
 
-    // ===== ZLR5401: AM (FC=0x0C) =====
+    // ===== ZLR5401: AM (FC=0x22) =====
     void onAmGetConfig();              // GET_CONFIG
     void onAmSetConfig();              // SET_CONFIG
     void onAmQuery();                  // QUERY
@@ -145,7 +169,7 @@ private slots:
     void onAmGetWave();                // GET_WAVE (波形采集, 阻塞~1s)
     void onAmGetWavePage();            // GET_WAVE_PAGE (取一页波形)
 
-    // ===== ZLR5401: 开锁器 (FC=0x0D) =====
+    // ===== ZLR5401: 开锁器 (FC=0x23) =====
     void onLockerConfigure();          // CONFIGURE
     void onLockerAdd();                // ADD
     void onLockerStart();              // START
@@ -153,11 +177,19 @@ private slots:
     void onLockerQuery();              // QUERY
     void onLockerGetEvent();           // GET_EVENT
 
-    // ===== ZLR5401: RGB (FC=0x0E) =====
+private slots:
+    // Round027: 一键解锁槽位 (m_zlrLockerWait 类型为 LockerWaitDialog*, PMF connect 可见)
+    void onLockerOneShot();            // 解锁入口 (Round_011 唯一通道): 解析 1~4 张 EPC → UNLOCK_MULTI(0x0A) 阻塞 + 推送事件实时展示
+    void runLockerUnlockMulti(const QList<QByteArray> &epcs);   // Round105: UNLOCK_MULTI 多标签同步解锁
+    void handleLockerPushEvent(const QByteArray &frame);        // Round105: 0x0B~0x0F 推送事件帧解析+实时展示
+    // Round032: onLockerProgress/GET_PROGRESS 5s 轮询已废 — 进度全靠 0x0B~0x0F 上报事件
+    void onLockerCancelUnlock();       // CANCEL (0x04) 流程中打断
+    void closeLockerWaitDialog();      // Round027: 关停等待框/进度定时器/取消兜底定时器
+    // ===== ZLR5401: RGB (FC=0x24) =====
     void onRgbSet();                   // SET: 按勾选组合下发 mask
     void onRgbClear();                 // 全灭 mask=0x00 + 清勾选
 
-    // ===== ZLR5401: 自检 (FC=0x0F) =====
+    // ===== ZLR5401: 自检 (FC=0x25) =====
     void onSelfTestQuery();            // QUERY: 读锁存错误位 + 实时诊断快照
     void onSelfTestRerun();            // RERUN: 重探外设 (阻塞~3s)
     void onSelfTestClear();            // CLEAR: 按掩码清指定位
@@ -168,6 +200,8 @@ private:
     void applyStylesheet();
     void updateConnectionState(bool isConnected);
     void enableFuncButtons(bool enable);
+    // Round028: 握手成功后按 SW 字段启用 Supported Devices 区按钮 (ZLR5401 / SCCD 二选一, 不符则全禁用)
+    void enableSuppBySw(const QString &swText);
     void resetUiToInitialState();   // 断开(含 USB 拔出)后: UI 复位到初始状态
     void startUpgrade(const QString &binPath);
     void flashControls(bool disable);
@@ -181,8 +215,13 @@ private:
     // ZLR5401 通用子命令收发: 打包 subCmd+argData → 发 → 校验 func^0xFF + data[0]==subCmd
     //   成功返回 true, outPayload=data.mid(2) (去掉 cmd+err), outErrNote 填错误说明
     //   timeoutMs 默认 3000; 长命令如 SELFTEST RERUN(~3s) 可传 8000
+    // Round029: clearRxBuffer=false 用于嵌套轮询(GET_PROGRESS)不清等待中的 0x08 帧;
+    //   keepWaitingOnNonMatch=true 用于 UNLOCK_MULTI 长等待: 头帧非目标(0x09 迟到响应/推送事件帧)交回调后丢弃继续等
     bool sendZlrSubCmd(quint8 fc, quint8 subCmd, const QByteArray &argData,
-                       QByteArray *outPayload, QString *outErrNote, int timeoutMs = 3000);
+                       QByteArray *outPayload, QString *outErrNote, int timeoutMs = 3000,
+                       bool clearRxBuffer = true, bool keepWaitingOnNonMatch = false,
+                       quint8 *outErrCode = nullptr,
+                       const std::function<void(const QByteArray &)> &onEventFrame = {});
     bool rfOpenWithProto(quint8 proto);   // 按协议 INIT+DELAY+OPEN 时序开启射频
     bool rfEnsureOpen14443A();            // 14443A 操作前确保射频已开 (未开则开启)
     bool rfEnsureOpen15693();             // 15693 操作前确保射频已开 (未开则开启)
@@ -231,12 +270,14 @@ private:
     QPushButton *m_sccdBtn14443A = nullptr; // 切到 14443A tab
     QPushButton *m_sccdBtn14443B = nullptr; // 切到 14443B tab
     QTabWidget *m_sccdTabs = nullptr;       // 三个协议 Tab
+    QScrollArea *m_sccdScroll = nullptr;    // Round029 D5: scroll wrapper (防 LOG 被挤)
 
     // ZLR5401 区域 (Sccd 下方扩展, 参照 Sccd 交互)
     QPushButton *m_zlrBtn = nullptr;         // Supported Devices 区: ZLR5401 开关 (可勾选)
     QGroupBox   *m_zlrBox = nullptr;         // ZLR5401 Area 主框 (默认隐藏)
+    QScrollArea *m_zlrScroll = nullptr;      // Round029 D5: scroll wrapper (防 LOG 被挤)
     QTabWidget  *m_zlrTabs = nullptr;        // 电机 / UHF / AM / 开锁器 四个 Tab
-    // 电机 (FC=0x0A)
+    // 电机 (FC=0x20)
     QSpinBox *m_zlrMotorAngle  = nullptr;    // 角度(°), 0=持续运行
     QSpinBox *m_zlrMotorSteps  = nullptr;    // 每转微步数 (默认 3200)
     QSpinBox *m_zlrMotorSpeed  = nullptr;    // 微步/秒 (1~2000)
@@ -253,7 +294,7 @@ private:
     QPushButton *m_zlrMotorHealthBtn = nullptr; // HEALTH (健康/堵转)
     QPushButton *m_zlrMotorStatsBtn = nullptr;  // STATS (运行统计)
     QPushButton *m_zlrMotorStateBtn = nullptr;  // 获取状态 (QUERY, 位于"其他"区)
-    // UHF (FC=0x0B)
+    // UHF (FC=0x21)
     QSpinBox *m_zlrUhfPower    = nullptr;    // 功率 dBm (5~30)
     QLineEdit *m_zlrUhfEpc      = nullptr;   // EPC (读/写标签定位)
     QTextEdit *m_zlrUhfOut      = nullptr;   // UHF 输出区
@@ -278,7 +319,7 @@ private:
     QPushButton *m_zlrUhfScanStopBtn = nullptr; // SCAN_STOP
     QPushButton *m_zlrUhfDumpBtn = nullptr;     // GET_DUMP 诊断
     QTableWidget *m_zlrUhfTagTable = nullptr;   // 标签表格 (EPC 双击填入输入框)
-    // AM (FC=0x0C)
+    // AM (FC=0x22)
     QLineEdit *m_zlrAmThr  = nullptr; QLineEdit *m_zlrAmHit = nullptr; QLineEdit *m_zlrAmFreq = nullptr;
     QLineEdit *m_zlrAmDelay = nullptr; QLineEdit *m_zlrAmLen = nullptr; QLineEdit *m_zlrAmInvert = nullptr;
     QLineEdit *m_zlrAmSync = nullptr; QLineEdit *m_zlrAmVolt = nullptr; QLineEdit *m_zlrAmMode = nullptr;
@@ -293,7 +334,7 @@ private:
     QSpinBox *m_zlrAmWavePage = nullptr;       // GET_WAVE_PAGE 页码
     QPushButton *m_zlrAmWavePageBtn = nullptr; // 取一页波形
     QTextEdit *m_zlrAmWaveOut = nullptr;       // AM 波形输出
-    // 开锁器 (FC=0x0D)
+    // 开锁器 (FC=0x23)
     QSpinBox *m_zlrLockerSoftCnt = nullptr;  // 软标总数 N
     QLineEdit *m_zlrLockerHardEpc = nullptr; // 追加硬标签 EPC (hex)
     QTextEdit *m_zlrLockerOut = nullptr;     // 开锁器输出区
@@ -303,21 +344,40 @@ private:
     QPushButton *m_zlrLockerCancelBtn = nullptr;
     QPushButton *m_zlrLockerQueryBtn = nullptr;
     QPushButton *m_zlrLockerEvtBtn = nullptr;
-    // RGB (FC=0x0E)
+    // 一键解锁 (Round027 起源 ONE_SHOT; Round_011 起唯一通道 UNLOCK_MULTI 0x0D/0x0A, 1~4 张 EPC)
+    QLineEdit *m_zlrLockerUnlockEpc = nullptr;  // 期望解锁 EPC 1~4 张 (空格/逗号分隔; 独立于清单区"硬标签EPC")
+    QSpinBox *m_zlrLockerTmo = nullptr;        // Round035: EPC窗 tmoMs EPC单次盘点时限 (默认500, 上限10000, 展示可改)
+                                               //   hold 解锁总窗隐藏固定下发 0 → 设备公式 W=120000+(m-1)*30000
+    QSpinBox *m_zlrLockerDemagCnt = nullptr;   // 软标消磁数 softCnt (0=跳过软标段)
+    QPushButton *m_zlrLockerUnlockBtn = nullptr;// 解锁按钮 (主操作色)
+    LockerWaitDialog *m_zlrLockerWait = nullptr;// 模态等待对话框 (Round027)
+    QTimer *m_zlrLockerCancelGuard = nullptr;   // CANCEL 竞态兜底 (1s 强关)
+    int m_zlrLockerWinMs = 0;                   // Round105: EVT_START 下发的实际解锁窗 W (Round032 起仅记录/展示用, 不再作进度分母)
+
+    // Round029 优化建议①: 保留被精简区域 groupbox 指针供右键菜单恢复
+    QGroupBox *m_zlrUhfScanBox  = nullptr;
+    QGroupBox *m_zlrUhfRwBox    = nullptr;
+    QGroupBox *m_zlrUhfCfgBox   = nullptr;   // Round029 v5: 配置区
+    QTabWidget *m_zlrAmSubTabs = nullptr;   // Round030: 监控/波形 子标签 (默认隐藏, 右键恢复)
+    QGroupBox *m_zlrAmOutBox    = nullptr;
+    QGroupBox *m_zlrLockerLstBox = nullptr;
+    QGroupBox *m_zlrLockerOpBox  = nullptr;   // Round029 v5: 操作区
+    // RGB (FC=0x24)
     QCheckBox *m_zlrRgbG = nullptr;            // 绿 使能 (bit0)
     QCheckBox *m_zlrRgbR = nullptr;            // 红 使能 (bit1)
     QCheckBox *m_zlrRgbB = nullptr;            // 蓝 使能 (bit2)
     QPushButton *m_zlrRgbSetBtn = nullptr;     // 下发 RGB
     QPushButton *m_zlrRgbClearBtn = nullptr;   // 全灭
     QLabel *m_zlrRgbOutLabel = nullptr;        // 上次 mask 回显
-    // 自检 (FC=0x0F)
-    QLabel *m_zlrSelfErrBitsLabel = nullptr;   // 锁存错误位 16bit (二/十六进制)
+    // 自检 (FC=0x25)
+    QLabel *m_zlrSelfErrBitsLabel = nullptr;   // 锁存错误位 16bit (二/十六进制) (Round028 改为 QTableWidget 渲染, 保留以兼容)
     QLabel *m_zlrSelfDiagLabel = nullptr;      // 实时诊断快照 (motorCommOk/drvFault/uhfLink/amLink/paramCrc/switchErr)
+    QTableWidget *m_zlrSelfTable = nullptr;     // Round028: 自检状态表格 (字段 / 值 / 状态)
     QPushButton *m_zlrSelfQueryBtn = nullptr;  // QUERY
     QPushButton *m_zlrSelfRerunBtn = nullptr;  // RERUN (阻塞~3s)
     QSpinBox *m_zlrSelfClearMask = nullptr;    // CLEAR 掩码 (16bit)
     QPushButton *m_zlrSelfClearBtn = nullptr;  // CLEAR 触发
-    QTextEdit *m_zlrSelfOut = nullptr;         // 自检输出区
+    QTextEdit *m_zlrSelfOut = nullptr;         // 自检输出区 (Round028: 去除, 全部走表格渲染)
 
 
     // 15693 Tab 控件

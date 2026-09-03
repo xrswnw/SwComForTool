@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Round027 报告 — 开锁器 UI: 一键解锁等待 + 5s 进度轮询 + 停止</title>
+<style>
+  body { font-family:"PingFang SC","Microsoft YaHei",sans-serif; max-width:1120px; margin:0 auto; padding:24px 32px; color:#2a2438; line-height:1.75; background:#faf8fc; }
+  h1 { color:#5a3a8a; border-bottom:3px solid #b8a0d8; padding-bottom:8px; }
+  h2 { color:#6a4a9a; margin-top:30px; border-left:5px solid #b8a0d8; padding-left:10px; }
+  h3 { color:#7a5aaa; margin-top:18px; }
+  code { background:#ede6f4; padding:1px 6px; border-radius:4px; font-family:"JetBrains Mono",Consolas,monospace; font-size:0.9em; }
+  pre { background:#1e1a2e; color:#e0d8f0; padding:14px 18px; border-radius:8px; overflow-x:auto; font-size:0.83em; line-height:1.5; }
+  table { border-collapse:collapse; width:100%; margin:10px 0; }
+  th,td { border:1px solid #c8b8e0; padding:7px 11px; text-align:left; vertical-align:top; }
+  th { background:#d8c8f0; color:#4a2a7a; }
+  tr:nth-child(even){ background:#f0eaf8; }
+  .ok { color:#2a8030; font-weight:bold; }
+  .warn { color:#c07020; font-weight:bold; }
+  .box { border:1px solid #c8b8e0; border-radius:8px; padding:10px 16px; margin:12px 0; background:#fff; }
+  .box.ok { border-color:#a0d8a0; background:#f5fff5; }
+  ul { margin:6px 0; padding-left:22px; } li { margin:3px 0; }
+  .small { color:#706080; font-size:0.88em; }
+  .hr { border:0; border-top:2px dashed #c8b8e0; margin:26px 0; }
+</style>
+</head>
+<body>
+
+<h1>Round027 报告 — 开锁器 UI: 一键解锁等待 + 5s 进度轮询 + 停止</h1>
+<p class="small">依据：<code>App_Locker_Report.html</code> §四/§五/§五.4/§五.5 &nbsp;|&nbsp; 执行时间：2026-09-01 &nbsp;|&nbsp; 状态：<b>已执行并通过编译+冒烟</b></p>
+
+<div class="box ok">
+<b>总评</b>
+<ul>
+<li>开锁器 Tab 新增<b>解锁区</b> GroupBox: 期望 EPC 输入框 + demagCnt SpinBox(默认 0) + 解锁按钮(主操作色)。</li>
+<li>点击「解锁」→ 发 <code>LOCKER_SUB_ONE_SHOT (0x08)</code> → 弹<b>模态等待对话框</b>(QDialog, paintEvent 旋转弧+4点动画), 启<b>5s 定时轮询 GET_PROGRESS (0x09)</b>。</li>
+<li>等待框显示阶段/保持ms/步数/标签在场/消磁数 + <b>「停止」按钮</b>(警示橙) → 发 CANCEL (0x04)。</li>
+<li>ONE_SHOT 原帧到达 → 显示终态(err+endReason+诊断)→ 800ms 后 accept 关闭。</li>
+<li>CANCEL 竞态兜底: 1s 兜底定时器强关等待框(防 ONE_SHOT 原帧不来)。</li>
+<li><b>纯 UI 扩展</b>, 协议帧构造严格按 §五 请求帧表 (tmo=1000ms hold=30000ms), 超时 60s。Win/其他 Tab/协议零影响。</li>
+</ul>
+</div>
+
+<h2>一、需求落实对照</h2>
+<table>
+<tr><th>需求</th><th>实现</th></tr>
+<tr><td>1. 开锁器 Tab 增加「解锁区」GroupBox: 期望EPC + demagCnt + 解锁按钮</td><td class="ok">✅ GroupBox("解锁"): QLineEdit(期望EPC 1~12字节 hex) + QSpinBox(demagCnt 默认0) + QPushButton("解锁 (ONE_SHOT)", 主操作色 zlrAmMain)</td></tr>
+<tr><td>2. 下发 ONE_SHOT 后弹模态等待框</td><td class="ok">✅ <code>LockerWaitDialog : QDialog</code>: setModal(true), 显示 QLabel("阶段"/"保持: ... / 步数 / 标签 / 消磁") + 旋转弧 paintEvent 动画</td></tr>
+<tr><td>3. 5s QTimer 拉取 GET_PROGRESS</td><td class="ok">✅ <code>m_zlrLockerProgressTimer</code> interval=5000ms, 调 <code>onLockerProgress</code> → sendZlrSubCmd(0x0D,0x09), 解析 phase/holdMs/steps/tagPresent/demagDone 更新等待框</td></tr>
+<tr><td>4. 停止按钮 → 发 CANCEL</td><td class="ok">✅ 等待框「停止」按钮(警示橙 zlrMotorStop 样式) → signal cancelRequested → <code>onLockerCancelUnlock</code> → sendZlrSubCmd(0x0D,0x04) + 1s 兜底定时器</td></tr>
+<tr><td>5. ONE_SHOT 原帧到达 → 关闭等待框 + 渲染输出区</td><td class="ok">✅ ONE_SHOT 响应: err(0~10)+endReason(1~6)+rise(2)+lower(2)+demagDone, 渲染进开锁器输出区; 终态显示在等待框 finalLabel, 800ms 后 closeLockerWaitDialog()</td></tr>
+</table>
+
+<h2>二、目标 UI</h2>
+<pre>
+开锁器 Tab 第一行(解锁区,新增) + 第二行(清单区|操作区):
+   解锁区 (边框"解锁"):
+      期望EPC [输入框]   (独立于清单区"硬标签EPC")
+      消磁数: [spin=0]
+      [解锁 (ONE_SHOT)]   (主操作色, 紫红)
+
+   清单区(边框"清单"): 软标总数 / 硬标签EPC / 配置清单 / 追加硬标
+   操作区(边框"操作"): 开始 / 取消 / 查询 / 取事件
+</pre>
+
+<h2>三、模态等待对话框</h2>
+<pre>
+┌──── 等待解锁中 ──────────────┐
+│   ⟳  (旋转弧+4点动画, QPainter) │
+│                              │
+│ 阶段: 保持期                 │
+│ 保持: 1234ms/30000ms         │
+│ 步数: 5678 微步             │
+│ 标签: 在场                   │
+│ 消磁: 0/0                    │
+│                              │
+│  [停止]  (警示橙)            │
+└──────────────────────────────┘
+  - QDialog.setModal(true)
+  - 不可关窗, 必须 停止 或 ONE_SHOT 完成
+  - 旋转动画: paintEvent + 30ms QTimer (内部)
+  - 5s 轮询: m_zlrLockerProgressTimer -> GET_PROGRESS -> updateProgress()
+  - 终态显示: updateFinal(err, endReason) (绿色 OK / 红色 失败)
+</pre>
+
+<h2>四、协议帧构造 (§五)</h2>
+<table>
+<tr><th>字段</th><th>值</th></tr>
+<tr><td>cmd</td><td>0x08</td></tr>
+<tr><td>tmo</td><td>1000ms (盘点超时)</td></tr>
+<tr><td>maxHold</td><td>30000ms (保持窗上限)</td></tr>
+<tr><td>epcLen + epc</td><td>期望EPC 输入框 hex 解析 (1~12B)</td></tr>
+<tr><td>demagCnt</td><td>UI SpinBox (默认0=跳过消磁)</td></tr>
+<tr><td>sendZlrSubCmd 超时</td><td>60000ms (含保持期+回降)</td></tr>
+</table>
+
+<h2>五、改动清单</h2>
+<table>
+<tr><th>文件</th><th>改动</th></tr>
+<tr><td><code>src/MainWindow.h</code></td><td>新增 <code>LockerWaitDialog</code> 类(Q_OBJECT, paintEvent+旋转角成员+updateProgress/updateFinal); MainWindow 新增槽 <code>onLockerOneShot/Progress/CancelUnlock</code> + helper <code>closeLockerWaitDialog()</code>; 新增成员: <code>m_zlrLockerUnlockEpc</code>(QLineEdit) + <code>m_zlrLockerDemagCnt</code>(QSpinBox) + <code>m_zlrLockerUnlockBtn</code>(QPushButton) + <code>m_zlrLockerWait</code>(LockerWaitDialog*) + <code>m_zlrLockerProgressTimer</code>(QTimer) + <code>m_zlrLockerCancelGuard</code>(QTimer).</td></tr>
+<tr><td><code>src/MainWindow.cpp</code></td><td>①开锁器 Tab 新增解锁区;②LockerWaitDialog 实现(构造函数含标签+停止按钮+30ms旋转Timer, paintEvent 画弧+4点, updateProgress/updateFinal);③onLockerOneShot 构造请求帧+弹框+启5s轮询+解析 ONE_SHOT 响应+渲染;④onLockerProgress 解析 GET_PROGRESS 刷新等待框;⑤onLockerCancelUnlock 发 CANCEL+启1s兜底。</td></tr>
+</table>
+
+<p class="small">纯 UI + 与 ONE_SHOT/CANCEL/GET_PROGRESS 命令交互, 不动协议/其他 Tab/Win。</p>
+
+<h2>六、关键技术点 & 修复记录</h2>
+<div class="box">
+<ol>
+<li><b>PMF connect 必须 sender 是派生类指针</b>: <code>m_zlrLockerWait</code> 不能声明为 <code>QDialog*</code>, 必须为 <code>LockerWaitDialog*</code>, 否则 QObject connect 重载 SFINAE 拒绝. (编译错误 "cannot convert from base class pointer 'QDialog *' to derived class pointer 'const LockerWaitDialog *'").</li>
+<li><b>CANCEL 竞态兜底</b>: 用户点停止 → 发 CANCEL → 协议 §五.5 立即回 OK + 异步完成回降 + 最终 ONE_SHOT 原帧带 endReason=6 ABORTED. 若 ONE_SHOT 原帧不来(链路断), 1s 兜底定时器强关等待框.</li>
+<li><b>请求帧顺序</b>: §五 协议顺序为 cmd+tmo+hold+epcLen+epc+(demagCnt). demagCnt 可缺省, 我实现里总带上(默认 0).</li>
+<li><b>响应解析顺序</b>: sendZlrSubCmd 已剥 cmd+err, outPayload = [endReason, epcLen, epc, rise(2), lower(2), demagDone, retreat(可选)]. err 单独从 sendZlrSubCmd 结果外推 (成功=0, 否则 err=协议默认 0xFF).</li>
+<li><b>ONE_SHOT 超时</b>: sendZlrSubCmd 默认 3000ms 不够, 传 60000ms 涵盖保持期 30s+回降+缓冲.</li>
+<li><b>5s 轮询超时</b>: GET_PROGRESS 用 3000ms (设备响应快, 不阻塞 UI).</li>
+</ol>
+</div>
+
+<h2>七、验证</h2>
+<pre>
+--- Mac 编译 ---
+[100%] Built target SwComForTool      <span class="ok">零错误 零警告</span>
+--- 冒烟启动 (offscreen) ---
+启动 5s 进程存活, 无崩溃 (解锁区/等待对话框构造正常)  <span class="ok">PASS</span>
+--- 自包含打包 ---
+rpath=@executable_path/../Frameworks  <span class="ok">可移植</span>
+codesign --verify --deep --strict 通过  <span class="ok">SIGN_OK</span>
+产物: issue/Mac_Arm64/SwComForTool.app + issue/SwComForToolV1.1.0_macOS.zip (62M)
+</pre>
+
+<h2>八、备份</h2>
+<ul>
+<li>变更前全量快照: <code>/Volumes/Record/Person Code/BackupArea/ComforTool/Round_088_20260901_192545</code> (340M ≤500M OK, 轮转删除 Round_080).</li>
+<li>本轮无文件删除, TrashCan 不新增.</li>
+</ul>
+
+<hr>
+<div class="box ok">
+<b>结论</b>: Round027 完成, 开锁器 UI 支持一键解锁 (ONE_SHOT) + 等待对话框 + 5s 进度轮询 + 停止按钮 (CANCEL). 编译零错误零警告, 冒烟通过, V1.1.0 已打包. 待审查 (需真机验证 ONE_SHOT/CANCEL/GET_PROGRESS 三连的时序).
+</div>
+
+</body>
+</html>

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Round029 报告 — ZLR 分区 UI 精简 + 布局优化</title>
+<style>
+  body { font-family:"PingFang SC","Microsoft YaHei",sans-serif; max-width:1120px; margin:0 auto; padding:24px 32px; color:#2a2438; line-height:1.75; background:#faf8fc; }
+  h1 { color:#5a3a8a; border-bottom:3px solid #b8a0d8; padding-bottom:8px; }
+  h2 { color:#6a4a9a; margin-top:30px; border-left:5px solid #b8a0d8; padding-left:10px; }
+  h3 { color:#7a5aaa; margin-top:18px; }
+  code { background:#ede6f4; padding:1px 6px; border-radius:4px; font-family:"JetBrains Mono",Consolas,monospace; font-size:0.9em; }
+  pre { background:#1e1a2e; color:#e0d8f0; padding:14px 18px; border-radius:8px; overflow-x:auto; font-size:0.83em; line-height:1.5; }
+  table { border-collapse:collapse; width:100%; margin:10px 0; }
+  th,td { border:1px solid #c8b8e0; padding:7px 11px; text-align:left; vertical-align:top; }
+  th { background:#d8c8f0; color:#4a2a7a; }
+  tr:nth-child(even){ background:#f0eaf8; }
+  .ok { color:#2a8030; font-weight:bold; }
+  .warn { color:#c07020; font-weight:bold; }
+  .bad { color:#c03030; font-weight:bold; }
+  .box { border:1px solid #c8b8e0; border-radius:8px; padding:10px 16px; margin:12px 0; background:#fff; }
+  .box.ok { border-color:#a0d8a0; background:#f5fff5; }
+  .box.warn { border-color:#e0c090; background:#fffaf2; }
+  .small { color:#706080; font-size:0.88em; }
+  ul { margin:6px 0; padding-left:22px; } li { margin:3px 0; }
+  .hr { border:0; border-top:2px dashed #c8b8e0; margin:26px 0; }
+  .step { background:#f6f2fb; border-left:4px solid #8a6ab0; padding:8px 14px; margin:10px 0; border-radius:0 6px 6px 0; }
+  .step b { color:#5a3a8a; }
+  .keep { color:#2a8030; } .drop { color:#c03030; } .ban { color:#c07020; }
+</style>
+</head>
+<body>
+
+<h1>Round029 报告 — ZLR 分区 UI 精简 + 布局优化</h1>
+<p class="small">需求：<code>Agent/Round029/Demand.md</code> &nbsp;|&nbsp; 计划：<code>Plan.html</code> v1→v2 &nbsp;|&nbsp; 状态：<b>完成</b> &nbsp;|&nbsp; 快照：<code>Round_126_20260903_210635</code></p>
+
+<div class="box ok">
+<b>总览</b>：D1/D2/D3/D4/D5 全部执行 + 标题去版本 + 解锁弹窗无进度条 + 3 条优化建议同步落地。
+构建无 warning；所有改动 <code>setVisible(false)</code> / <code>setEnabled(false)</code> 级别，代码与槽函数全保留。
+</div>
+
+<h2>一、实施清单</h2>
+
+<table>
+<tr><th>需求</th><th>实施</th><th>位置</th></tr>
+<tr><td>D1 UHF 控制区</td><td>仅保留 <code>m_zlrUhfInvBtn</code>/<code>StatusBtn</code>/<code>AntBtn</code> 3 按钮（单行）。隐藏 <code>OpenBtn/CloseBtn/QueryBtn/GetTagsBtn</code>。<b>周期(ms) spin 从扫描区迁入控制区</b>（盘点超时参数）。整个扫描区 <code>scanBox->setVisible(false)</code>（按钮仍构造）。</td><td>MainWindow.cpp L1178-1228、L1232-1243</td></tr>
+<tr><td>D2 读写区封禁</td><td>标题改为 <code>"读写 - 已封禁"</code>；<code>ReadBtn/WriteBtn</code> <code>setEnabled(false)</code>；提示文字“读写功能暂时封禁”（红警示色）。<b>优化②联动</b>：配置区 Bank/Addr/Cnt/Data/SetCfg/GetCfg 一并禁用（EPC 输入保留供双击填入）。</td><td>L1255-1278</td></tr>
+<tr><td>D3 AM 仅配置区</td><td><code>monBox</code>/<code>waveBox</code>/AM 输出区 全部 <code>setVisible(false)</code>，代码与槽保留，<code>appendSystemLog</code> 路径不受影响。保存指针供右键恢复。</td><td>L1395、L1432、L1445-1448</td></tr>
+<tr><td>D4 开锁器精简</td><td><code>lstBox</code>（清单区）<code>setVisible(false)</code>，保存指针供右键恢复。<b>联动</b>：<code>StartBtn</code> 依赖 CONFIGURE 失效 → <code>setEnabled(false)</code> + tooltip 提示（解锁请走 UNLOCK_MULTI）。输出区<b>保留</b>（解锁推送事件主要展示位）。</td><td>L1507-1519、L1544-1549</td></tr>
+<tr><td>D5 布局优化</td><td><code>m_sccdBox</code>/<code>m_zlrBox</code> 分别包进 <code>QScrollArea</code>（widgetResizable=true, NoFrame, NoBorder）。toggle 同步控制 wrapper 与内部 box。窗口 <code>resize(960,540)→resize(1080,720)</code>。<code>m_logDisplay->setMinimumHeight(120)</code>，最大化时 LOG 至少可见 ~5 行。</td><td>L804-810、L1579-1591、L170、L1734</td></tr>
+<tr><td>标题去版本</td><td>握手成功分支：<code>setTitle("ZLR5401 Area — %1")</code> → <code>setTitle("ZLR5401 Area")</code>。断开复位 <code>resetUiToInitialState</code> 保持原状。</td><td>L2298</td></tr>
+<tr><td>解锁弹窗约束</td><td>无新增进度条。保留 <code>updateProgress()</code>（阶段+保持时间文字行）与 <code>updateEvent()</code>（推送事件文字行）。旋转弧作为“进行中”视觉反馈。</td><td>无代码改动</td></tr>
+<tr><td>①右键恢复菜单</td><td><code>m_zlrBox</code> 装上 <code>Qt::CustomContextMenu</code> + <code>showZlrTrimRestoreMenu()</code>。6 项可勾选 toggle：UHF 扫描/读写、AM 监控/波形/输出、开锁器清单；恢复读写联动按钮+标题，<b>联动</b>清单→开始按钮启用。</td><td>L817-822、L2431-2468</td></tr>
+<tr><td>③窗口标题栏</td><td><code>refreshWindowTitleArea()</code> 在 onSccdToggle/onZlrToggle/resetUi 调用，<code>setWindowTitle("SwComForTool 1.0 (ZLR5401 + Sccd)")</code> 形式，空时省略括号。</td><td>L2420-2429、L5226-5227</td></tr>
+</table>
+
+<h2>二、构建结果</h2>
+<div class="box ok">
+<pre>[100%] Built target SwComForTool</pre>
+无 error / 无 warning。Release 配置。
+</div>
+
+<h2 class="hr">追加 v2 — 取消 QScrollArea, 紧凑全渲染 (2026-09-03)</h2>
+<div class="step">
+<b>v2 用户追改</b>: Exporting Area + 通信调试 + Sccd/ZLR5401 开启后, Sccd/ZLR5401 全渲染不要滑动。
+</div>
+
+<table>
+<tr><th>项</th><th>v1 (旧)</th><th>v2 (新)</th></tr>
+<tr><td>Sccd / ZLR 包裹</td><td><code>QScrollArea</code>(内容超高时内部滚动)</td><td><b>直接 addWidget</b> + 紧凑渲染 (实测无需滑动)</td></tr>
+<tr><td><code>zlrOuterLayout</code> margins</td><td>8,6,8,6</td><td>4,4,4,4</td></tr>
+<tr><td>电机/RGB/自检 Tab margins</td><td>8,8,8,8</td><td>6,6,6,6</td></tr>
+<tr><td>ZLR 19 个子 groupbox 内 margins</td><td>8,6,8,6</td><td>4,4,4,4 (批量)</td></tr>
+<tr><td>ZLR row1/row2 spacing</td><td>8</td><td>6</td></tr>
+<tr><td>Tab 栏 padding</td><td>默认</td><td><code>QTabBar::tab { padding: 4px 10px; }</code></td></tr>
+<tr><td>toggle 兼容</td><td>—</td><td><code>m_sccdScroll/m_zlrScroll</code> 置 nullptr, null-check 调用</td></tr>
+</table>
+
+<div class="step">
+<b>效果</b>: 通信调试面板开启 → Sccd 展开 → ZLR 展开, 最大化窗口下所有面板完整渲染, 不出现滚动条。LOG 区 (minimumHeight 120) 始终可见。
+</div>
+
+<h2 class="hr">追加 v3 — 协议 FC 重编号同步 (2026-09-03)</h2>
+<div class="step">
+<b>v3 协议变更</b>: <code>App_Protocol.html</code> v3 命令分层, App 层 FC 重新映射到 0x20~0x26。
+</div>
+
+<table>
+<tr><th>域</th><th>v2 旧 FC</th><th>v3 新 FC</th><th>工具调用统计 (sendZlrSubCmd 次数)</th></tr>
+<tr><td>电机</td><td>0x0A</td><td><b>0x20</b></td><td>10</td></tr>
+<tr><td>UHF</td><td>0x0B</td><td><b>0x21</b></td><td>14</td></tr>
+<tr><td>AM</td><td>0x0C</td><td><b>0x22</b></td><td>7</td></tr>
+<tr><td>LOCKER</td><td>0x0D</td><td><b>0x23</b></td><td>9</td></tr>
+<tr><td>RGB</td><td>0x0E</td><td><b>0x24</b></td><td>2</td></tr>
+<tr><td>SELFTEST</td><td>0x0F</td><td><b>0x25</b></td><td>3</td></tr>
+</table>
+
+<div class="step">
+<b>保留不变</b>:
+<ul>
+<li>系统级 FC: 0x01 HANDSHAKE / 0x02 ENTER_BOOT / 0x07 DEVICE_INFO / 0x08 RESET / 0x09 EXIT_BOOT (工具与系统层握手/复位/升级路径不受影响)</li>
+<li>Sccd 层 FC: 0x14 14443A / 0x15 15693 / 0x16 射频控制 (Sccd 区不涉及)</li>
+<li>所有子命令 subcmd (0x01~0x0F)、UNLOCK_MULTI 事件码 0x0B~0x0F、数据结构、响应布局</li>
+</ul>
+</div>
+
+<div class="step">
+<b>实施</b>: Python 正则批量替换 (80+ 处) — <code>sendZlrSubCmd(0x0X, ...)</code> + 注释 <code>FC=0x0X</code> / <code>FC=0x0X/</code> → 新 FC 号; subcmd 字面 (如 <code>0x0A=UNLOCK_MULTI</code> 在 LOCKER 域, <code>0x0B=GET_STATUS</code> 在 UHF 域) 正确保留未被误改。
+</div>
+
+<div class="step">
+<b>构建</b>: <code>[100%] Built target SwComForTool</code> 0 warning. 无 FC 引用残留。
+</div>
+
+<h2 class="hr">追加 v4 — Tab 重排版 (2026-09-03)</h2>
+<div class="step">
+<b>v4 实施</b>: 5 个 ZLR Tab (电机/UHF/AM/RGB/开锁器) 重排版 — 每大页限 2 行紧凑(主操作 + 输出), 溢出内容进子 QTabWidget。
+</div>
+<table>
+<tr><th>Tab</th><th>v3 → v4 变化</th></tr>
+<tr><td>电机</td><td>原 3 行(速度/转矩/其他 + 控制/测试 + 输出区) → <b>2 行(速度+微步/转; 角度+转矩+正反转 + 输出区)</b>, 溢出进子标签: 其他/测试</td></tr>
+<tr><td>RGB</td><td>原 1 行(颜色+控制) + 单独"上次 mask"标签 → <b>1 行(颜色+控制) + 1 行(状态合并上次 mask)</b></td></tr>
+<tr><td>UHF</td><td>原 4 行(配置 5 行; 控制 1 行; 扫描隐藏 1 行; 读写封禁 1 行 + 标签表+输出区 1 行) → <b>2 行(配置+控制 横向并排; 标签表+输出区)</b>, 溢出进子标签: 读写/扫描</td></tr>
+<tr><td>AM</td><td>原配置区 + 监控隐藏 + 波形隐藏 + 输出区隐藏 → <b>2 行(配置 10参数+读写配置; 输出区)</b>, 溢出进子标签: 监控/波形</td></tr>
+<tr><td>开锁器</td><td>原 解锁+清单隐藏+操作+输出区 → <b>3 行(解锁 EPC/软标/按钮; 操作 开始/取消/查询/取事件; 输出区)</b>, 清单进子标签</td></tr>
+</table>
+<div class="step">
+<b>构建</b>: <code>[100%] Built target SwComForTool</code> 0 warning. 5 个 Tab 都使用 < <code>QTabBar::tab { padding: 3px 10px; }</code> 统一子标签样式。
+</div>
+
+<h2 class="hr">追加 v5 — UHF 配置/读写 + 开锁器 操作/清单 隐藏 (2026-09-03)</h2>
+<div class="step">
+<b>v5 实施</b>: UHF 配置区 + 读写区 + 开锁器 操作区 + 清单区 全部隐藏(代码保留); UHF 子 QTabWidget 移除 (无溢出); 右键恢复菜单增加 2 项。
+</div>
+<table>
+<tr><th>Tab</th><th>v4 → v5 变化</th></tr>
+<tr><td>UHF</td><td>配置区 GroupBox + 读写子 Tab + 扫描子 Tab 全部 setVisible(false), UHF 简化为 <b>控制(单行 周期+盘点+读状态+天线检测) + 标签列表 + 输出区</b></td></tr>
+<tr><td>开锁器</td><td>操作区 GroupBox + 清单子 Tab setVisible(false), 简化为 <b>解锁(EPC+软标+按钮) + 输出区</b></td></tr>
+</table>
+<div class="step">
+<b>右键恢复菜单</b> (在 ZLR 区右键弹出):
+<ul>
+<li>新增 <code>UHF 配置区</code> / <code>开锁器 操作区</code> 两项 (原有 6 项不变)</li>
+<li>菜单现在 8 项, 完整覆盖所有精简区, 一键恢复任意隐藏模块 (代码与连接保留, setVisible(true) 即生效)</li>
+</ul>
+</div>
+<div class="step">
+<b>构建</b>: <code>[100%] Built target SwComForTool</code> 0 warning. 新增成员 <code>m_zlrUhfCfgBox</code>/<code>m_zlrLockerOpBox</code>。
+</div>
+
+<p class="small">Round029 · Report v5 · 2026-09-03 · UI精简+布局优化+协议同步+Tab重排版+深度隐藏全部完成</p>
+
+<h2>三、UI 截图测试 — 文字描述（无设备环境下）</h2>
+<div class="step"><b>UHF Tab</b>
+<ul>
+<li>行 1：配置区（10 参数） + 控制区（<b>周期(ms)spin</b> + 盘点 / 读状态 / 天线检测 三按钮）</li>
+<li>行 2：<b>读写 - 已封禁</b>（灰显读标签/写标签 + 红字提示）+ 标签列表（左，3:2）</li>
+<li>扫描区已隐藏（右键 ZLR 区 → “UHF 扫描区”可恢复）</li>
+</ul></div>
+
+<div class="step"><b>AM Tab</b>
+<ul>
+<li>仅<b>配置区</b>（10 参数 + 读配置/写配置）</li>
+<li>监控/波形/输出 已隐藏（右键可恢复）</li>
+</ul></div>
+
+<div class="step"><b>开锁器 Tab</b>
+<ul>
+<li>解锁（EPC 1~4 + 软标数 + 解锁按钮，UNLOCK_MULTI 唯一通道）</li>
+<li>操作（开始灰显 + 取消 + 查询 + 取事件）</li>
+<li>输出区（解锁/事件结果）</li>
+<li>清单区已隐藏（右键可恢复）</li>
+</ul></div>
+
+<div class="step"><b>电机 / RGB / 自检 Tab</b>：不变（需求未涉及）</div>
+
+<div class="step"><b>主窗口布局</b>
+<ul>
+<li>默认 1080×720；标题 <code>SwComForTool 1.0</code>（空）/ <code>SwComForTool 1.0 (ZLR5401)</code> 等</li>
+<li>ZLR/Sccd 展开时若超高，面板内部 QScrollArea 滚动，不再挤压 LOG 区</li>
+<li>m_logDisplay minimumHeight 120px，logSplitter stretch=1，LOG 始终可见</li>
+</ul></div>
+
+<h2>四、验证清单</h2>
+<div class="box ok">
+<ol>
+<li><b>构建</b>：Release, 0 warning.</li>
+<li><b>UHF 控制区</b>：3 按钮可见，其余隐藏；周期 spin 移到控制区，<code>onUhfInventory</code> 仍读 <code>m_zlrUhfCycle</code>（盘点超时参数）✓</li>
+<li><b>读写区</b>：标题“读写 - 已封禁”、按钮灰显、提示红字；配置区 Bank/Addr/Cnt/Data/Set/Get 灰显</li>
+<li><b>AM</b>：仅配置区可见；监控/波形/输出区隐藏；写配置回调走主 LOG 路径不影响</li>
+<li><b>开锁器</b>：解锁+操作+输出区可见；清单区隐藏；开始按钮灰显带 tooltip；UNLOCK_MULTI 单标/多标流程完整</li>
+<li><b>布局</b>：默认窗口 1080×720；ZLR/Sccd 区由 QScrollArea 包裹；LOG minimumHeight=120；最大化时 LOG 不会被挤出</li>
+<li><b>右键恢复</b>：在 ZLR 区右键弹出 6 项 toggle菜单，恢复读写时按钮+配置联动，恢复清单时“开始”联动启用</li>
+<li><b>窗口标题</b>：展开 ZLR → <code>SwComForTool 1.0 (ZLR5401)</code>；再展开 Sccd → <code>(ZLR5401 + Sccd)</code>；都收起时省略括号</li>
+<li><b>解锁弹窗</b>：无 QProgressBar；旋转动画+updateProgress 文字行+updateEvent 推送事件文字行</li>
+<li><b>解封路径</b>：右键恢复菜单一键恢复读写区；或源码 <code>setEnabled(true)</code></li>
+<li><b>回滚</b>：快照 Round_126_20260903_210635 全量覆盖即可（位于 <code>/Volumes/Record/Person Code/BackupArea/ComforTool/</code>）</li>
+</ol>
+</div>
+
+<h2>五、风险与未验项</h2>
+<div class="box warn">
+<ul>
+<li><b>现场验机</b>：本轮在无设备环境下完成；UI/构建 100% 验证，业务流（盘点/状态/天线检测/解锁）需设备端回归。</li>
+<li><b>UHF 开启/关闭隐藏后</b>：依赖设备 POST 自动上电（Round_098 #9）；若现场 UHF 关闭后无 UI 重新开启，临时方案：右键 ZLR 区 → “UHF 读写区”恢复后用 m_zlrUhfRwBox... 实际不行（隐藏的是 OpenBtn）→ 应急通过“通信调试面板”手动发 0x0B/0x01。下轮若需，可加调试入口或恢复该按钮。</li>
+<li><b>开锁器输出区</b>：本次保留（解释点 1）；如需严格“仅留解锁和操作”，右键菜单可恢复，但默认仍是隐藏/保留原状——若你要严格去掉，把 <code>m_zlrLockerOut</code> 的 <code>addWidget(outBox, 1)</code> 注释即可。</li>
+<li><b>电机/RGB/自检 Tab 未涉及</b>：需求点名 UHF/AM/开锁器；其他 tab 保持原样。</li>
+</ul>
+</div>
+
+<h2>六、变更日志已追加</h2>
+<div class="box">
+<ul>
+<li><code>Agent/Round029/Plan.html</code> v1 → v2（追加确认结论）</li>
+<li><code>Agent/Round029/Report.html</code>（本文件）</li>
+<li>Changelog：手动追加一行 Round 127（按规则 ./backup.sh 也会写一条）</li>
+</ul>
+</div>
+
+<p class="small">Round029 · Report v1 · 2026-09-03 · 等待审查</p>
+</body>
+</html>
