@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(SwComForTool VERSION 1.1.0 LANGUAGES CXX)
+project(SwComForTool VERSION 1.3.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,11 +18,13 @@ option(COMFORTOOL_ENABLE_USB "Enable USB HID transport" ON)
 # 公共源文件
 set(COMFORTOOL_SOURCES
     src/main.cpp
+    src/AppLogger.cpp
     src/MainWindow.cpp
     src/SerialPortManager.cpp
     src/ProtocolParser.cpp
 )
 set(COMFORTOOL_HEADERS
+    src/AppLogger.h
     src/ITransport.h
 )
 

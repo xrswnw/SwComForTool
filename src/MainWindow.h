@@ -16,6 +16,7 @@
 #include <QGroupBox>
 #include <QTableWidget>
 #include <QTimer>
+#include <QElapsedTimer>
 #include <QDialog>
 #include <QPainter>
 #include <QScrollArea>
@@ -32,19 +33,27 @@ struct FrameData;   // 前置声明 (定义于 ProtocolParser.h), 供 handleZlrP
 // 通信接口类型
 enum class TransportType { Com, Usb };
 
-// 开锁器一键解锁 模态等待对话框 (Round027): 显示阶段/保持ms/步数/标签在场/消磁数 + 旋转动画 + 停止按钮
+// 开锁器 UNLOCK_EPC 等待 模态等待对话框 (Round038): 轮询状态行 + 推送事件行 + 终态 + 停止按钮
 class LockerWaitDialog : public QDialog
 {
     Q_OBJECT
 public:
     explicit LockerWaitDialog(QWidget *parent = nullptr);
-    // Round032: UNLOCK_MULTI 终态 (endReason: 1=ALL_OK 2=PARTIAL_TIMEOUT 4=UHF_LOST 6=ABORTED 7=SOFT_TIMEOUT);
-    //   进度动画与 GET_PROGRESS 轮询已废 — 弹窗仅展示设备推送事件 (0x0B~0x0F)
-    void updateFinalMulti(int endReason, int confirmed, int total, int bitmap, int softDone, int softCnt);
-    // Round105: 推送事件实时行 (0x0B 确认 / 0x0C 失配 / 0x0D 硬标完成 / 0x0E 软标 / 0x0F 受理)
+    // Round038: UNLOCK_EPC 终态 (endReason: 1=ALL_OK 2=EPC_LOST 3=TIMEOUT 4=UHF_LOST 6=ABORTED)
+    void updateFinalEpc(int endReason, int cycles, int okCycles, int failCycles,
+                        int rise, int lower, int elapsedMs);
+    // Round039: UNLOCK_AM 终态 (endReason: 1=ALL_OK 3=TIMEOUT 6=ABORTED)
+    //   (err=0 成功终帧 14B: endReason/rise/lower/elapsed秒/amCnt/deactDone/deactFail/rsv0/rsv1)
+    void updateFinalAm(int endReason, int amCnt, int deactDone, int deactFail,
+                       int rise, int lower, int elapsedSec);
+    // Round038: UNLOCK_AM err≠0 终帧 (BUSY/PARAM/HOMING/MOTOR_FAULT/MOTOR_TIMEOUT/AM_LINK) 失败文案
+    void updateFail(const QString &txt);
+    // Round038: GET_PROGRESS 轮询状态行 (阶段/已过ms/周期计数/lastCycle)
+    void updateProgress(const QString &txt);
+    // Round038: 推送事件实时行 (0x0F 受理 / 0x0B 确认)
     void updateEvent(const QString &txt);
 signals:
-    // 用户按"停止" → MainWindow 发 CANCEL
+    // 用户按"停止" → MainWindow 发 CANCEL 主动结束
     void cancelRequested();
 private:
     QString m_finalTxt;     // 终态描述 (成功/失败)
@@ -178,13 +187,15 @@ private slots:
     void onLockerGetEvent();           // GET_EVENT
 
 private slots:
-    // Round027: 一键解锁槽位 (m_zlrLockerWait 类型为 LockerWaitDialog*, PMF connect 可见)
-    void onLockerOneShot();            // 解锁入口 (Round_011 唯一通道): 解析 1~4 张 EPC → UNLOCK_MULTI(0x0A) 阻塞 + 推送事件实时展示
-    void runLockerUnlockMulti(const QList<QByteArray> &epcs);   // Round105: UNLOCK_MULTI 多标签同步解锁
-    void handleLockerPushEvent(const QByteArray &frame);        // Round105: 0x0B~0x0F 推送事件帧解析+实时展示
-    // Round032: onLockerProgress/GET_PROGRESS 5s 轮询已废 — 进度全靠 0x0B~0x0F 上报事件
-    void onLockerCancelUnlock();       // CANCEL (0x04) 流程中打断
-    void closeLockerWaitDialog();      // Round027: 关停等待框/进度定时器/取消兜底定时器
+    // Round038: 解锁槽位 — 协议V4(Round_013) 唯一开锁通道 UNLOCK_EPC(0x10), 0x0A UNLOCK_MULTI 已停用
+    void onLockerOneShot();            // 解锁入口: 校验单 EPC (1~12B) → UNLOCK_EPC(0x10) 下发 + 弹窗 + 启动轮询
+    void runLockerUnlockEpc(const QByteArray &epc);   // Round038: UNLOCK_EPC 单帧下发 (fire-and-forget) + 弹窗 + 看门狗
+    void onLockerAmUnlock();           // Round039: AM 解锁入口: amCnt/tmo → UNLOCK_AM(0x11) 下发 + 弹窗 + 轮询
+    void runLockerUnlockAm(int amCnt, int tmoSec);    // Round039: UNLOCK_AM 单帧下发 (fire-and-forget) + 弹窗 + 看门狗
+    void onLockerPollTimeout();        // Round038: 500ms GET_PROGRESS(0x09) 定时拉取状态 + 流程看门狗
+    void handleLockerPushEvent(const QByteArray &frame);  // Round038: 0x0F 受理/0x0B 确认推送 + 0x10 终帧 解析+实时展示
+    void onLockerCancelUnlock();       // CANCEL (0x04) 主动结束 (停机+安全回降后回 endReason=6 终帧)
+    void closeLockerWaitDialog();      // Round027: 关停等待框 (轮询由 stopUnlockPolling 管)
     // ===== ZLR5401: RGB (FC=0x24) =====
     void onRgbSet();                   // SET: 按勾选组合下发 mask
     void onRgbClear();                 // 全灭 mask=0x00 + 清勾选
@@ -222,6 +233,15 @@ private:
                        bool clearRxBuffer = true, bool keepWaitingOnNonMatch = false,
                        quint8 *outErrCode = nullptr,
                        const std::function<void(const QByteArray &)> &onEventFrame = {});
+    // Round038: 原路写一帧 (fire-and-forget, 不等响应) — UNLOCK_EPC(0x10) 下发 / CANCEL(0x04) 主动结束;
+    //   响应/终帧由轮询循环 (sendZlrSubCmd keepWaiting 回调 handleLockerPushEvent) 接收处理
+    void writeZlrFrame(quint8 fc, const QByteArray &data);
+    // Round038: UNLOCK_EPC(0x10) 终帧渲染+流程收尾 (err=0 成功 15B / err≠0 变体)
+    void finishUnlockEpc(const QByteArray &data);
+    // Round039: UNLOCK_AM(0x11) 终帧渲染+流程收尾 (err=0 成功 14B / err≠0 变体)
+    void finishUnlockAm(const QByteArray &data);
+    // Round038: 停轮询/复位流程标志 (终帧/看门狗/断开 共用收尾, 不动弹窗)
+    void stopUnlockPolling();
     bool rfOpenWithProto(quint8 proto);   // 按协议 INIT+DELAY+OPEN 时序开启射频
     bool rfEnsureOpen14443A();            // 14443A 操作前确保射频已开 (未开则开启)
     bool rfEnsureOpen15693();             // 15693 操作前确保射频已开 (未开则开启)
@@ -335,7 +355,7 @@ private:
     QPushButton *m_zlrAmWavePageBtn = nullptr; // 取一页波形
     QTextEdit *m_zlrAmWaveOut = nullptr;       // AM 波形输出
     // 开锁器 (FC=0x23)
-    QSpinBox *m_zlrLockerSoftCnt = nullptr;  // 软标总数 N
+    QSpinBox *m_zlrLockerSoftCnt = nullptr;  // 软标总数 N (清单 CONFIGURE 用)
     QLineEdit *m_zlrLockerHardEpc = nullptr; // 追加硬标签 EPC (hex)
     QTextEdit *m_zlrLockerOut = nullptr;     // 开锁器输出区
     QPushButton *m_zlrLockerCfgBtn = nullptr;
@@ -344,20 +364,27 @@ private:
     QPushButton *m_zlrLockerCancelBtn = nullptr;
     QPushButton *m_zlrLockerQueryBtn = nullptr;
     QPushButton *m_zlrLockerEvtBtn = nullptr;
-    // 一键解锁 (Round027 起源 ONE_SHOT; Round_011 起唯一通道 UNLOCK_MULTI 0x0D/0x0A, 1~4 张 EPC)
-    QLineEdit *m_zlrLockerUnlockEpc = nullptr;  // 期望解锁 EPC 1~4 张 (空格/逗号分隔; 独立于清单区"硬标签EPC")
-    QSpinBox *m_zlrLockerTmo = nullptr;        // Round035: EPC窗 tmoMs EPC单次盘点时限 (默认500, 上限10000, 展示可改)
-                                               //   hold 解锁总窗隐藏固定下发 0 → 设备公式 W=120000+(m-1)*30000
-    QSpinBox *m_zlrLockerDemagCnt = nullptr;   // 软标消磁数 softCnt (0=跳过软标段)
+    // 解锁 (Round039: UNLOCK_EPC 0x10 / UNLOCK_AM 0x11; UI 精简 — 仅保持时间可调, 其余走协议缺省)
+    QLineEdit *m_zlrLockerUnlockEpc = nullptr;  // 期望解锁 EPC (单张 1~12B)
+    QSpinBox *m_zlrLockerHoldTop = nullptr;     // holdTopMs 顶部保持 (0→缺省3000, 上限60000)
+    QSpinBox *m_zlrLockerHoldSec = nullptr;    // rsv0 流程超时秒 (0=单轮, >0=流程窗内周期往复; 原"循环秒"改义)
+    // Round039: AM 解锁参数 (UNLOCK_AM 0x11: amCnt 计数张数 / tmo 计数窗秒)
+    QSpinBox *m_zlrLockerAmCnt = nullptr;       // amCnt 期望消磁张数 (0=直接升起支路: 无计数门保持 tmo 秒)
+    QSpinBox *m_zlrLockerAmTmo = nullptr;       // tmoSec u16 计数窗秒 (>0, 上限 16000; amCnt=0 时=保持时长)
+    quint8 m_zlrUnlockCmd = 0;                  // Round039: 当前解锁流程命令 (0x10 EPC / 0x11 AM) — 终帧/事件路由用
     QPushButton *m_zlrLockerUnlockBtn = nullptr;// 解锁按钮 (主操作色)
-    LockerWaitDialog *m_zlrLockerWait = nullptr;// 模态等待对话框 (Round027)
-    QTimer *m_zlrLockerCancelGuard = nullptr;   // CANCEL 竞态兜底 (1s 强关)
-    int m_zlrLockerWinMs = 0;                   // Round105: EVT_START 下发的实际解锁窗 W (Round032 起仅记录/展示用, 不再作进度分母)
+    LockerWaitDialog *m_zlrLockerWait = nullptr;// 等待对话框 (轮询状态+事件+终态+停止)
+    QTimer *m_zlrLockerPollTimer = nullptr;      // Round038: 500ms GET_PROGRESS(0x09) 定时轮询
+    bool m_zlrUnlockActive = false;              // Round038: UNLOCK_EPC 流程进行中 (含停止后等终帧)
+    bool m_zlrLockerPollBusy = false;            // Round038: 轮询重入保护 (waitForResponse 的 processEvents 嵌套)
+    bool m_zlrLockerCancelSent = false;          // Round038: 已发 CANCEL, 等待安全回降后 endReason=6 终帧
+    QElapsedTimer m_zlrUnlockWatch;               // Round038: 流程看门狗 (超时未收终帧则停轮询+补发 CANCEL)
+    int m_zlrUnlockWatchMs = 0;                   // Round038: 看门狗时限 (窗+保持+余量; 停止后压至回降余量)
+    quint8 m_zlrUnlockLastPhase = 0xFF;          // Round038: 上次轮询 phase (变化才记输出区)
+    int m_zlrLockerWinMs = 0;                     // Round038: 0x0F 受理帧下发的实际解锁窗 (记录/展示用)
 
     // Round029 优化建议①: 保留被精简区域 groupbox 指针供右键菜单恢复
-    QGroupBox *m_zlrUhfScanBox  = nullptr;
-    QGroupBox *m_zlrUhfRwBox    = nullptr;
-    QGroupBox *m_zlrUhfCfgBox   = nullptr;   // Round029 v5: 配置区
+    //   (Round037: UHF 全区开放, m_zlrUhfScanBox/RwBox/CfgBox 已移除)
     QTabWidget *m_zlrAmSubTabs = nullptr;   // Round030: 监控/波形 子标签 (默认隐藏, 右键恢复)
     QGroupBox *m_zlrAmOutBox    = nullptr;
     QGroupBox *m_zlrLockerLstBox = nullptr;

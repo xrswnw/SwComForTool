@@ -4,14 +4,10 @@
         {
             "label": "构建 Debug",
             "type": "shell",
-            "command": "cmake",
+            "command": "sh",
             "args": [
-                "--build",
-                "${workspaceFolder}/build",
-                "--config",
-                "Debug",
-                "-j",
-                "8"
+                "-c",
+                "cmake -S \"${workspaceFolder}\" -B \"${workspaceFolder}/build-debug\" -DCMAKE_BUILD_TYPE=Debug && cmake --build \"${workspaceFolder}/build-debug\" -j 8"
             ],
             "group": {
                 "kind": "build",
@@ -25,7 +21,7 @@
             "command": "sh",
             "args": [
                 "-c",
-                "pkill -f 'SwComForTool.app/Contents/MacOS/SwComForTool' 2>/dev/null; sleep 1; cmake --build ${workspaceFolder}/build -j 8 && (nohup ${workspaceFolder}/build/SwComForTool.app/Contents/MacOS/SwComForTool > /tmp/comfor_app_stdout.log 2>&1 < /dev/null & disown) ; sleep 2; echo started"
+                "pkill -f 'SwComForTool.app/Contents/MacOS/SwComForTool' 2>/dev/null; sleep 1; cmake --build \"${workspaceFolder}/build-debug\" -j 8 && (nohup \"${workspaceFolder}/build-debug/SwComForTool.app/Contents/MacOS/SwComForTool\" > /tmp/comfor_app_stdout.log 2>&1 < /dev/null & disown) ; sleep 2; echo started"
             ],
             "problemMatcher": [],
             "presentation": {

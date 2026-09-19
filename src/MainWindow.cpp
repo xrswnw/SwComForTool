@@ -2,6 +2,7 @@
 #include "HidManager.h"  // 平台 HID 门面 (macOS=HidManagerMac / Windows=HidManagerWin), 必须先于 MainWindow.h
 #endif
 #include "MainWindow.h"
+#include "AppLogger.h"
 #include "SerialPortManager.h"
 #include "ITransport.h"
 #include "ProtocolParser.h"
@@ -117,6 +118,7 @@ void MainWindow::setTransportSignals(ITransport *tp)
 
 void MainWindow::onTransportOpened()
 {
+    AppLogger::line("CONN", QString("已连接: %1").arg(m_transport ? m_transport->name() : QString()));
     updateConnectionState(true);
     statusBar()->showMessage(tr("已连接: %1").arg(m_transport ? m_transport->name() : QString()), 3000);
     enableFuncButtons(true);
@@ -129,6 +131,7 @@ void MainWindow::onTransportOpened()
 
 void MainWindow::onTransportClosed()
 {
+    AppLogger::line("CONN", "已断开"); // Round_099: 断开原因多为拔出/复位, 落盘便于还原现场
     updateConnectionState(false);
     statusBar()->showMessage(tr("未连接"), 3000);
     enableFuncButtons(false);
@@ -1095,7 +1098,7 @@ void MainWindow::setupUI()
         m_zlrTabs->addTab(w, tr("自检"));
     }
 
-    // ---------- UHF Tab (FC=0x21) - Round029 v5: 配置/读写 隐藏, 仅盘点/读状态/天线检测 + 标签列表 + 输出区 ----
+    // ---------- UHF Tab (FC=0x21) - Round037: 控制全开放 (原 Round029 v5 隐藏的配置/读写/扫描区及4按钮全部入布局) ----
     {
         auto *w = new QWidget;
         auto *l = new QVBoxLayout(w);
@@ -1117,31 +1120,124 @@ void MainWindow::setupUI()
             auto mkOpBtn = [](const QString &txt, const char *obj) { auto *b = new QPushButton(txt); b->setObjectName(obj); return b; };
             m_zlrUhfInvBtn = mkOpBtn(tr("盘点"), "zlrUhfMain");
             connect(m_zlrUhfInvBtn, &QPushButton::clicked, this, &MainWindow::onUhfInventory);
-            // 其它按钮仍构造 (代码与连接全保留); 隐藏
-            m_zlrUhfOpenBtn = mkOpBtn(tr("开启"), "zlrUhfMain");
+            // Round037: 控制按钮全部开放入布局 (原 v5 隐藏)
+            m_zlrUhfOpenBtn = mkOpBtn(tr("开启"), "zlrUhfMain");   // 设备 POST 自动上电, 此为手动兜底
             connect(m_zlrUhfOpenBtn, &QPushButton::clicked, this, &MainWindow::onUhfOpen);
-            m_zlrUhfOpenBtn->setVisible(false);   // 设备 POST 自动上电
             m_zlrUhfCloseBtn = mkOpBtn(tr("关闭"), "zlrUhfBtn");
             connect(m_zlrUhfCloseBtn, &QPushButton::clicked, this, &MainWindow::onUhfClose);
-            m_zlrUhfCloseBtn->setVisible(false);
             m_zlrUhfQueryBtn = mkOpBtn(tr("查询"), "zlrUhfBtn");
             connect(m_zlrUhfQueryBtn, &QPushButton::clicked, this, &MainWindow::onUhfQuery);
-            m_zlrUhfQueryBtn->setVisible(false);
-            m_zlrUhfGetTagsBtn = mkOpBtn(tr("取标签"), "zlrUhfBtn");
+            m_zlrUhfGetTagsBtn = mkOpBtn(tr("取标签"), "zlrUhfBtn");   // 拉取自动扫描缓冲结果
             connect(m_zlrUhfGetTagsBtn, &QPushButton::clicked, this, &MainWindow::onUhfGetTags);
-            m_zlrUhfGetTagsBtn->setVisible(false);
             m_zlrUhfStatusBtn = mkOpBtn(tr("读状态"), "zlrUhfBtn");
             connect(m_zlrUhfStatusBtn, &QPushButton::clicked, this, &MainWindow::onUhfGetStatus);
             m_zlrUhfAntBtn = mkOpBtn(tr("天线检测"), "zlrUhfBtn");
             connect(m_zlrUhfAntBtn, &QPushButton::clicked, this, &MainWindow::onUhfCheckAnt);
             ctlL->addWidget(m_zlrUhfInvBtn);
+            ctlL->addWidget(m_zlrUhfOpenBtn);
+            ctlL->addWidget(m_zlrUhfCloseBtn);
+            ctlL->addWidget(m_zlrUhfQueryBtn);
+            ctlL->addWidget(m_zlrUhfGetTagsBtn);
             ctlL->addWidget(m_zlrUhfStatusBtn);
             ctlL->addWidget(m_zlrUhfAntBtn);
             ctlL->addStretch(1);
             l->addWidget(ctlBox);
         }
 
-        // ===== 行 2: 标签列表 + 输出区 =====
+        // ===== 行 2: 扫描 (Round037 开放: 自动扫描/停扫描/诊断) =====
+        {
+            auto *scanBox = new QGroupBox(tr("扫描"));
+            scanBox->setObjectName("zlrMotorGroup");
+            auto *scanL = new QHBoxLayout(scanBox);
+            scanL->setContentsMargins(4, 4, 4, 4); scanL->setSpacing(4);
+            m_zlrUhfScanBtn = new QPushButton(tr("自动扫描")); m_zlrUhfScanBtn->setObjectName("zlrUhfMain");
+            m_zlrUhfScanBtn->setToolTip(tr("SCAN_START 连续盘点入缓冲"));
+            connect(m_zlrUhfScanBtn, &QPushButton::clicked, this, &MainWindow::onUhfSetScan);
+            m_zlrUhfScanStopBtn = new QPushButton(tr("停扫描")); m_zlrUhfScanStopBtn->setObjectName("zlrUhfBtn");
+            connect(m_zlrUhfScanStopBtn, &QPushButton::clicked, this, &MainWindow::onUhfScanStop);
+            m_zlrUhfDumpBtn = new QPushButton(tr("诊断")); m_zlrUhfDumpBtn->setObjectName("zlrUhfBtn");
+            m_zlrUhfDumpBtn->setToolTip(tr("GET_DUMP 原始字节诊断"));
+            connect(m_zlrUhfDumpBtn, &QPushButton::clicked, this, &MainWindow::onUhfGetDump);
+            scanL->addWidget(m_zlrUhfScanBtn);
+            scanL->addWidget(m_zlrUhfScanStopBtn);
+            scanL->addWidget(m_zlrUhfDumpBtn);
+            scanL->addStretch(1);
+            l->addWidget(scanBox);
+        }
+
+        // ===== 行 3: 配置 (Round037 开放: 功率/频段/EPC + 补读/写配置按钮) =====
+        {
+            auto *cfgBox = new QGroupBox(tr("配置"));
+            cfgBox->setObjectName("zlrMotorGroup");
+            auto *cfgL = new QHBoxLayout(cfgBox);
+            cfgL->setContentsMargins(4, 4, 4, 4); cfgL->setSpacing(4);
+            cfgL->addWidget(new QLabel(tr("功率:")));
+            m_zlrUhfPower = new QSpinBox;
+            m_zlrUhfPower->setRange(5, 30); m_zlrUhfPower->setValue(20);
+            m_zlrUhfPower->setMaximumWidth(60); m_zlrUhfPower->setAlignment(Qt::AlignCenter);
+            cfgL->addWidget(m_zlrUhfPower);
+            cfgL->addWidget(new QLabel(tr("频段:")));
+            m_zlrUhfBand = new QComboBox;
+            m_zlrUhfBand->addItem("北美", 0x01); m_zlrUhfBand->addItem("中国1", 0x06);
+            m_zlrUhfBand->addItem("CE_LOW", 0x08); m_zlrUhfBand->addItem("全频段", 0xFF);
+            m_zlrUhfBand->setMaximumWidth(90);
+            cfgL->addWidget(m_zlrUhfBand);
+            cfgL->addWidget(new QLabel(tr("EPC:")));
+            m_zlrUhfEpc = new QLineEdit; m_zlrUhfEpc->setMaxLength(24);
+            m_zlrUhfEpc->setPlaceholderText("hex"); m_zlrUhfEpc->setFont(QFont("Menlo", 10));
+            m_zlrUhfEpc->setMaximumWidth(140);
+            cfgL->addWidget(m_zlrUhfEpc);
+            m_zlrUhfGetCfgBtn = new QPushButton(tr("读配置")); m_zlrUhfGetCfgBtn->setObjectName("zlrUhfBtn");
+            connect(m_zlrUhfGetCfgBtn, &QPushButton::clicked, this, &MainWindow::onUhfGetConfig);
+            cfgL->addWidget(m_zlrUhfGetCfgBtn);
+            m_zlrUhfSetCfgBtn = new QPushButton(tr("写配置")); m_zlrUhfSetCfgBtn->setObjectName("zlrUhfMain");
+            connect(m_zlrUhfSetCfgBtn, &QPushButton::clicked, this, &MainWindow::onUhfSetConfig);
+            cfgL->addWidget(m_zlrUhfSetCfgBtn);
+            cfgL->addStretch(1);
+            l->addWidget(cfgBox);
+        }
+
+        // ===== 行 4: 读写标签 (Round037 开放; 补回 v4 移除的 Bank/Addr/Cnt/Data — 原代码空指针会崩) =====
+        {
+            auto *rwBox = new QGroupBox(tr("读写"));
+            rwBox->setObjectName("zlrMotorGroup");
+            auto *rwL = new QHBoxLayout(rwBox);
+            rwL->setContentsMargins(4, 4, 4, 4); rwL->setSpacing(6);
+            auto mkField = [](const QString &label, int lo, int hi, int def) {
+                auto *box = new QWidget;
+                auto *hb = new QHBoxLayout(box);
+                hb->setContentsMargins(0, 0, 0, 0); hb->setSpacing(2);
+                hb->addWidget(new QLabel(label));
+                auto *sb = new QSpinBox;
+                sb->setRange(lo, hi); sb->setValue(def);
+                sb->setMaximumWidth(56); sb->setAlignment(Qt::AlignCenter);
+                hb->addWidget(sb);
+                return QPair<QWidget*, QSpinBox*>{box, sb};
+            };
+            // Gen2 bank: 0=Reserved 1=EPC 2=TID 3=User, 读写数据默认 User 区
+            auto b0 = mkField(tr("Bank:"), 0, 3, 3);  m_zlrUhfBank = b0.second;
+            auto b1 = mkField(tr("Addr:"), 0, 255, 0); m_zlrUhfAddr = b1.second;
+            auto b2 = mkField(tr("Cnt:"), 1, 32, 4);   m_zlrUhfCnt  = b2.second;
+            rwL->addWidget(b0.first); rwL->addWidget(b1.first); rwL->addWidget(b2.first);
+            auto *dbox = new QWidget;
+            auto *dhb = new QHBoxLayout(dbox);
+            dhb->setContentsMargins(0, 0, 0, 0); dhb->setSpacing(2);
+            dhb->addWidget(new QLabel(tr("Data:")));
+            m_zlrUhfData = new QLineEdit; m_zlrUhfData->setPlaceholderText("hex");
+            m_zlrUhfData->setFont(QFont("Menlo", 10)); m_zlrUhfData->setMaximumWidth(120);
+            dhb->addWidget(m_zlrUhfData);
+            rwL->addWidget(dbox);
+            m_zlrUhfReadBtn = new QPushButton(tr("读标签")); m_zlrUhfReadBtn->setObjectName("zlrUhfMain");
+            connect(m_zlrUhfReadBtn, &QPushButton::clicked, this, &MainWindow::onUhfReadTag);
+            m_zlrUhfWriteBtn = new QPushButton(tr("写标签")); m_zlrUhfWriteBtn->setObjectName("zlrUhfMain");
+            connect(m_zlrUhfWriteBtn, &QPushButton::clicked, this, &MainWindow::onUhfWriteTag);
+            rwL->addWidget(m_zlrUhfReadBtn);
+            rwL->addWidget(m_zlrUhfWriteBtn);
+            rwL->addStretch(1);
+            l->addWidget(rwBox);
+        }
+
+        // ===== 行 5: 标签列表 + 输出区 =====
         {
             auto *row = new QHBoxLayout;
             row->setSpacing(4);
@@ -1173,71 +1269,6 @@ void MainWindow::setupUI()
             outL->addWidget(m_zlrUhfOut);
             row->addWidget(outBox, 2);
             l->addLayout(row, 1);
-        }
-
-        // ===== 隐藏区代码保留 (右键恢复菜单使用) =====
-        // 配置区 (功率/频段/EPC + 读写配置) - 全部隐藏
-        {
-            auto *cfgBox = new QGroupBox(tr("配置"));
-            m_zlrUhfCfgBox = cfgBox;   // 右键恢复菜单用
-            cfgBox->setObjectName("zlrMotorGroup");
-            auto *cfgL = new QHBoxLayout(cfgBox);
-            cfgL->setContentsMargins(4, 4, 4, 4); cfgL->setSpacing(4);
-            cfgL->addWidget(new QLabel(tr("功率:")));
-            m_zlrUhfPower = new QSpinBox;
-            m_zlrUhfPower->setRange(5, 30); m_zlrUhfPower->setValue(20);
-            m_zlrUhfPower->setMaximumWidth(60); m_zlrUhfPower->setAlignment(Qt::AlignCenter);
-            cfgL->addWidget(m_zlrUhfPower);
-            cfgL->addWidget(new QLabel(tr("频段:")));
-            m_zlrUhfBand = new QComboBox;
-            m_zlrUhfBand->addItem("北美", 0x01); m_zlrUhfBand->addItem("中国1", 0x06);
-            m_zlrUhfBand->addItem("CE_LOW", 0x08); m_zlrUhfBand->addItem("全频段", 0xFF);
-            m_zlrUhfBand->setMaximumWidth(90);
-            cfgL->addWidget(m_zlrUhfBand);
-            cfgL->addWidget(new QLabel(tr("EPC:")));
-            m_zlrUhfEpc = new QLineEdit; m_zlrUhfEpc->setMaxLength(24);
-            m_zlrUhfEpc->setPlaceholderText("hex"); m_zlrUhfEpc->setFont(QFont("Menlo", 10));
-            m_zlrUhfEpc->setMaximumWidth(140);
-            cfgL->addWidget(m_zlrUhfEpc);
-            cfgBox->setVisible(false);
-            // 配置区 Bank/Addr/Cnt/Data 控件已不在 cfgBox 内 (v4 重构移除了), 此处不构造
-        }
-        // 读写区 (读标签/写标签 - 已封禁)
-        {
-            auto *rwBox = new QGroupBox(tr("读写 - 已封禁"));
-            m_zlrUhfRwBox = rwBox;
-            rwBox->setObjectName("zlrMotorGroup");
-            auto *rwL = new QHBoxLayout(rwBox);
-            rwL->setContentsMargins(4, 4, 4, 4); rwL->setSpacing(6);
-            m_zlrUhfReadBtn = new QPushButton(tr("读标签")); m_zlrUhfReadBtn->setObjectName("zlrUhfMain");
-            connect(m_zlrUhfReadBtn, &QPushButton::clicked, this, &MainWindow::onUhfReadTag);
-            m_zlrUhfWriteBtn = new QPushButton(tr("写标签")); m_zlrUhfWriteBtn->setObjectName("zlrUhfMain");
-            connect(m_zlrUhfWriteBtn, &QPushButton::clicked, this, &MainWindow::onUhfWriteTag);
-            rwL->addWidget(m_zlrUhfReadBtn);
-            rwL->addWidget(m_zlrUhfWriteBtn);
-            rwL->addStretch(1);
-            rwBox->setVisible(false);
-        }
-        // 扫描区 (自动扫描/停扫描/诊断) - 保留但隐藏
-        {
-            auto *scanBox = new QGroupBox(tr("扫描"));
-            m_zlrUhfScanBox = scanBox;
-            scanBox->setObjectName("zlrMotorGroup");
-            auto *scanL = new QHBoxLayout(scanBox);
-            scanL->setContentsMargins(4, 4, 4, 4); scanL->setSpacing(4);
-            m_zlrUhfScanBtn = new QPushButton(tr("自动扫描")); m_zlrUhfScanBtn->setObjectName("zlrUhfMain");
-            m_zlrUhfScanBtn->setToolTip(tr("SCAN_START 连续盘点入缓冲"));
-            connect(m_zlrUhfScanBtn, &QPushButton::clicked, this, &MainWindow::onUhfSetScan);
-            m_zlrUhfScanStopBtn = new QPushButton(tr("停扫描")); m_zlrUhfScanStopBtn->setObjectName("zlrUhfBtn");
-            connect(m_zlrUhfScanStopBtn, &QPushButton::clicked, this, &MainWindow::onUhfScanStop);
-            m_zlrUhfDumpBtn = new QPushButton(tr("诊断")); m_zlrUhfDumpBtn->setObjectName("zlrUhfBtn");
-            m_zlrUhfDumpBtn->setToolTip(tr("GET_DUMP 原始字节诊断"));
-            connect(m_zlrUhfDumpBtn, &QPushButton::clicked, this, &MainWindow::onUhfGetDump);
-            scanL->addWidget(m_zlrUhfScanBtn);
-            scanL->addWidget(m_zlrUhfScanStopBtn);
-            scanL->addWidget(m_zlrUhfDumpBtn);
-            scanL->addStretch(1);
-            scanBox->setVisible(false);
         }
 
         m_zlrTabs->addTab(w, tr("UHF"));
@@ -1393,7 +1424,7 @@ void MainWindow::setupUI()
         l->setContentsMargins(4, 4, 4, 4);
         l->setSpacing(4);
 
-        // ===== 行 1: 解锁 (EPC + 两个时间窗口 + 软标数 + 按钮) - Round033: 窗口可修正, 0=协议缺省 =====
+        // ===== 行 1: 解锁 (单 EPC + 时间窗参数 + 按钮) - Round038: UNLOCK_EPC(0x10) 单标签, 0=协议缺省 =====
         {
             auto *unlockBox = new QGroupBox(tr("解锁"));
             unlockBox->setObjectName("zlrMotorGroup");
@@ -1403,34 +1434,57 @@ void MainWindow::setupUI()
             auto *uL1 = new QHBoxLayout; uL1->setSpacing(4);
             uL1->addWidget(new QLabel(tr("EPC:")));
             m_zlrLockerUnlockEpc = new QLineEdit;
-            m_zlrLockerUnlockEpc->setMaxLength(119);
-            m_zlrLockerUnlockEpc->setPlaceholderText("hex 1~12B; 多标签(2~4张)以空格/逗号分隔");
+            m_zlrLockerUnlockEpc->setMaxLength(24);
+            m_zlrLockerUnlockEpc->setPlaceholderText("hex 1~12B 单标签");
             m_zlrLockerUnlockEpc->setFont(QFont("Menlo", 10));
-            m_zlrLockerUnlockEpc->setToolTip(tr("期望标签 1~4 张; 1 张=单标, 多张=多标, 统一 UNLOCK_MULTI"));
+            m_zlrLockerUnlockEpc->setToolTip(tr("期望标签 1 张 (UNLOCK_EPC 单帧下发, 阻塞自治)"));
             uL1->addWidget(m_zlrLockerUnlockEpc, 1);
             m_zlrLockerUnlockBtn = new QPushButton(tr("解锁"));
             m_zlrLockerUnlockBtn->setObjectName("zlrAmMain");
-            m_zlrLockerUnlockBtn->setToolTip(tr("FC=0x23/0x0A: UNLOCK_MULTI 唯一开锁通道"));
+            m_zlrLockerUnlockBtn->setToolTip(tr("FC=0x23/0x10: UNLOCK_EPC 唯一开锁通道 (0x0A 已停用); 弹窗 + 0.5s 轮询进度, 可主动停止"));
             connect(m_zlrLockerUnlockBtn, &QPushButton::clicked, this, &MainWindow::onLockerOneShot);
             uL1->addWidget(m_zlrLockerUnlockBtn);
             uBoxL->addLayout(uL1);
-            // 行 1b: EPC窗(tmo) + 软标数 — Round035: hold(解锁总窗)隐藏固定公式下发, tmo=EPC单次盘点时间 默认500ms
+            // 行 1b: 顶部保持(holdTop) + 保持时间(rsv0 流程窗秒) — Round039: tmo/win 走协议缺省
             auto *uL2 = new QHBoxLayout; uL2->setSpacing(4);
-            uL2->addWidget(new QLabel(tr("EPC窗:")));
-            m_zlrLockerTmo = new QSpinBox;
-            m_zlrLockerTmo->setRange(0, 10000); m_zlrLockerTmo->setValue(500);
-            m_zlrLockerTmo->setMaximumWidth(80); m_zlrLockerTmo->setAlignment(Qt::AlignCenter);
-            m_zlrLockerTmo->setSuffix(" ms");
-            m_zlrLockerTmo->setToolTip(tr("tmoMs EPC 单次盘点时限: 默认 500ms, 上限 10000ms"));
-            uL2->addWidget(m_zlrLockerTmo);
-            uL2->addWidget(new QLabel(tr("软标:")));
-            m_zlrLockerDemagCnt = new QSpinBox;
-            m_zlrLockerDemagCnt->setRange(0, 255); m_zlrLockerDemagCnt->setValue(0);
-            m_zlrLockerDemagCnt->setMaximumWidth(60);
-            m_zlrLockerDemagCnt->setToolTip(tr("软标消磁数 softCnt (0=跳过软标段; 每消一个推 0x0E 事件)"));
-            uL2->addWidget(m_zlrLockerDemagCnt);
+            uL2->addWidget(new QLabel(tr("顶部保持:")));
+            m_zlrLockerHoldTop = new QSpinBox;
+            m_zlrLockerHoldTop->setRange(0, 60000); m_zlrLockerHoldTop->setValue(3000);
+            m_zlrLockerHoldTop->setMaximumWidth(84); m_zlrLockerHoldTop->setAlignment(Qt::AlignCenter);
+            m_zlrLockerHoldTop->setSuffix(" ms");
+            m_zlrLockerHoldTop->setToolTip(tr("holdTopMs 顶部保持时长: 缺省 3000ms, 0→3000, 上限 60000ms"));
+            uL2->addWidget(m_zlrLockerHoldTop);
+            uL2->addWidget(new QLabel(tr("保持时间:")));
+            m_zlrLockerHoldSec = new QSpinBox;
+            m_zlrLockerHoldSec->setRange(0, 255); m_zlrLockerHoldSec->setValue(0);
+            m_zlrLockerHoldSec->setMaximumWidth(64); m_zlrLockerHoldSec->setAlignment(Qt::AlignCenter);
+            m_zlrLockerHoldSec->setSuffix(" s");
+            m_zlrLockerHoldSec->setToolTip(tr("rsv0 流程超时秒: 0=单轮 (一轮即结), >0=流程窗 — 受理起 N 秒内周期往复解锁"));
+            uL2->addWidget(m_zlrLockerHoldSec);
             uL2->addStretch(1);
             uBoxL->addLayout(uL2);
+            // 行 1c: AM 解锁 (amCnt + tmo + 按钮) - Round039: UNLOCK_AM(0x11) AM 标签消磁计数解锁
+            auto *uL3 = new QHBoxLayout; uL3->setSpacing(4);
+            uL3->addWidget(new QLabel(tr("AM张数:")));
+            m_zlrLockerAmCnt = new QSpinBox;
+            m_zlrLockerAmCnt->setRange(0, 255); m_zlrLockerAmCnt->setValue(1);
+            m_zlrLockerAmCnt->setMaximumWidth(64); m_zlrLockerAmCnt->setAlignment(Qt::AlignCenter);
+            m_zlrLockerAmCnt->setToolTip(tr("amCnt 期望消磁张数: 0=直接完成支路 (无计数门, 受理即结账 ALL_OK)"));
+            uL3->addWidget(m_zlrLockerAmCnt);
+            uL3->addWidget(new QLabel(tr("AM窗:")));
+            m_zlrLockerAmTmo = new QSpinBox;
+            m_zlrLockerAmTmo->setRange(1, 16000); m_zlrLockerAmTmo->setValue(60);
+            m_zlrLockerAmTmo->setMaximumWidth(76); m_zlrLockerAmTmo->setAlignment(Qt::AlignCenter);
+            m_zlrLockerAmTmo->setSuffix(" s");
+            m_zlrLockerAmTmo->setToolTip(tr("tmo 计数窗秒 (>0, 上限 16000; 窗满未达标回 TIMEOUT)"));
+            uL3->addWidget(m_zlrLockerAmTmo);
+            auto *amUnlockBtn = new QPushButton(tr("AM解锁"));
+            amUnlockBtn->setObjectName("zlrAmMain");
+            amUnlockBtn->setToolTip(tr("FC=0x23/0x11: UNLOCK_AM 消磁计数解锁 — 零控制纯计数(不动电机/不切模式), 数够 amCnt 张即结账; 弹窗+0.5s轮询, 可主动停止"));
+            connect(amUnlockBtn, &QPushButton::clicked, this, &MainWindow::onLockerAmUnlock);
+            uL3->addWidget(amUnlockBtn);
+            uL3->addStretch(1);
+            uBoxL->addLayout(uL3);
             l->addWidget(unlockBox);
         }
 
@@ -1460,7 +1514,7 @@ void MainWindow::setupUI()
             m_zlrLockerStartBtn->setObjectName("zlrAmMain");
             connect(m_zlrLockerStartBtn, &QPushButton::clicked, this, &MainWindow::onLockerStart);
             m_zlrLockerStartBtn->setEnabled(false);   // 清单区隐藏后失效
-            m_zlrLockerStartBtn->setToolTip(tr("编排模式入口已隐藏 (CONFIGURE/ADD 在清单区), 解锁请走 UNLOCK_MULTI"));
+            m_zlrLockerStartBtn->setToolTip(tr("编排模式入口已隐藏 (CONFIGURE/ADD 在清单区), 解锁请走 UNLOCK_EPC"));
             opL->addWidget(m_zlrLockerStartBtn);
             m_zlrLockerCancelBtn = new QPushButton(tr("取消"));
             m_zlrLockerCancelBtn->setObjectName("zlrUhfBtn");
@@ -1918,6 +1972,17 @@ void MainWindow::refreshPorts()
         // 纯 IOHIDManager, GUI 进程内独立线程跑 CFRunLoop (主线程 Qt 循环时不派发 matching).
         // 枚举结果不播报(需求: 不提示扫描到 SCCD 设备), 由 onSearchBtn 决定是否自动连接.
         m_hidDevices = HidManager::enumerate(0x0000, 0x0000);
+        // Round_099: 枚举结果落盘 (vid:pid 摘要, 定位"列表空/找错设备"类问题)
+        {
+            QStringList ids;
+            for (const auto &d : qAsConst(m_hidDevices)) {
+                ids << QString("%1:%2").arg(d.vendorId, 4, 16, QChar('0'))
+                                       .arg(d.productId, 4, 16, QChar('0')).toUpper();
+                if (ids.size() >= 10) break; // 摘要封顶, 避免刷屏
+            }
+            AppLogger::line("ENUM", QString("HID 枚举到 %1 个设备: [%2]")
+                                .arg(m_hidDevices.size()).arg(ids.join(" ")));
+        }
         // 刷新路径 Label (保持选中索引或显示默认)
         if (m_selectedHudIdx >= m_hidDevices.size()) m_selectedHudIdx = 0;
         updatePathLabel();
@@ -2306,6 +2371,8 @@ void MainWindow::onReadyRead()
 void MainWindow::onPortError()
 {
     if (!m_transport) return;
+    // Round_099: 错误始终落盘 (升级中 UI 静默, 文件仍留痕)
+    AppLogger::line("ERR", QString("通信错误: %1").arg(m_transport->errorString()));
     // 升级流程中 setReport 失败是预期(EXEC 后设备软复位/旧 handle 失效), 静默不弹错误;
     // 升级结束由握手结果判定成功与否, 此处噪音会误导.
     if (m_upgrading) return;
@@ -2358,7 +2425,8 @@ void MainWindow::refreshWindowTitleArea()
 }
 
 // Round029 优化建议①: ZLR Area 右键菜单, 恢复被精简区域 (默认隐藏, 仅调试/临时启用)
-//   复位: 二次右键 + 勾选/取消勾选, 立即生效. 配置 + 控制 3 按钮 + 标签列表 + 输出区始终保留.
+//   Round037: UHF 全区开放后移除其菜单项, 仅剩 AM / 开锁器 可切换.
+//   复位: 二次右键 + 勾选/取消勾选, 立即生效.
 void MainWindow::showZlrTrimRestoreMenu()
 {
     QMenu menu(this);
@@ -2369,32 +2437,17 @@ void MainWindow::showZlrTrimRestoreMenu()
             a->setChecked(w->isVisible());
             connect(a, &QAction::toggled, this, [this, a, w](bool on){
                 w->setVisible(on);
-                // 读写区需恢复按钮/配置联动
                 QGroupBox *box = qobject_cast<QGroupBox *>(w);
-                if (box == m_zlrUhfRwBox) {
-                    if (m_zlrUhfReadBtn)  m_zlrUhfReadBtn->setEnabled(on);
-                    if (m_zlrUhfWriteBtn) m_zlrUhfWriteBtn->setEnabled(on);
-                    if (m_zlrUhfBank) m_zlrUhfBank->setEnabled(on);
-                    if (m_zlrUhfAddr) m_zlrUhfAddr->setEnabled(on);
-                    if (m_zlrUhfCnt)  m_zlrUhfCnt->setEnabled(on);
-                    if (m_zlrUhfData) m_zlrUhfData->setEnabled(on);
-                    if (m_zlrUhfSetCfgBtn) m_zlrUhfSetCfgBtn->setEnabled(on);
-                    if (m_zlrUhfGetCfgBtn) m_zlrUhfGetCfgBtn->setEnabled(on);
-                    box->setTitle(on ? tr("读写") : tr("读写 - 已封禁"));
-                }
                 // 锁定操作: 清单区隐藏后 "开始" 失效, 恢复时联动启用
                 if (box == m_zlrLockerLstBox && m_zlrLockerStartBtn) {
                     m_zlrLockerStartBtn->setEnabled(on);
                     m_zlrLockerStartBtn->setToolTip(
-                        on ? QString() : tr("编排模式入口已隐藏 (CONFIGURE/ADD 在清单区), 解锁请走 UNLOCK_MULTI"));
+                        on ? QString() : tr("编排模式入口已隐藏 (CONFIGURE/ADD 在清单区), 解锁请走 UNLOCK_EPC"));
                 }
                 a->setChecked(on);
             });
         }
     };
-    addToggle("UHF 配置区", m_zlrUhfCfgBox);   // Round029 v5: 隐藏配置区
-    addToggle("UHF 扫描区", m_zlrUhfScanBox);
-    addToggle("UHF 读写区", m_zlrUhfRwBox);
     addToggle("AM 监控/波形区", m_zlrAmSubTabs);   // Round030: 子标签整体切换
     addToggle("AM 输出区", m_zlrAmOutBox);
     addToggle("开锁器 操作区", m_zlrLockerOpBox);   // Round029 v5: 隐藏操作区
@@ -2429,7 +2482,7 @@ bool MainWindow::sendZlrSubCmd(quint8 fc, quint8 subCmd, const QByteArray &argDa
     appendLog("[SYS][TX]", txWire, QColor("#c050a0"));
 
     // Round029: 等响应后扫 buffer 找匹配 subCmd, 未匹配帧保留 buffer 留给上层
-    //   keepWaitingOnNonMatch=true (UNLOCK_MULTI 长等待): 头帧非目标(如迟到的 0x09 进度响应/推送事件帧)
+    //   keepWaitingOnNonMatch=true (UNLOCK_EPC 流程帧读取): 头帧非目标(如迟到的 0x09 进度响应/推送事件帧)
     //     → 丢弃该帧继续等剩余超时, 避免被无关帧"假唤醒"后立即失败
     //   keepWaitingOnNonMatch=false (普通调用): 头帧不匹配 → 保留 buffer, 返回 false
     int waitMs = timeoutMs > 0 ? timeoutMs : 3000;
@@ -2479,7 +2532,7 @@ bool MainWindow::sendZlrSubCmd(quint8 fc, quint8 subCmd, const QByteArray &argDa
         }
         if (gotFc != static_cast<quint8>(fc ^ 0xFF)) {
             if (keepWaitingOnNonMatch) {
-                if (onEventFrame) onEventFrame(m_rxBuffer.left(total));   // Round105: 完整帧交回调 (UNLOCK_MULTI 推送事件)
+                if (onEventFrame) onEventFrame(m_rxBuffer.left(total));   // 完整帧交回调 (UNLOCK_EPC 推送/终帧)
                 m_rxBuffer.remove(0, total); haveNewData = true; continue; }  // 非目标帧, 丢弃重扫
             // 不消费 buffer, 返回错; 上层可自行扫 buffer
             QByteArray nonMatchFrame = m_rxBuffer.left(total);
@@ -2516,7 +2569,7 @@ bool MainWindow::sendZlrSubCmd(quint8 fc, quint8 subCmd, const QByteArray &argDa
     quint8 err = static_cast<quint8>(parsed.data[1]);
     appendLog("[SYS][RX]", frame, QColor("#30b078"));   // Round031: 只显示帧, 不加描述
     if (err != 0) {
-        if (outErrCode) *outErrCode = err;   // Round_101: err 码透传给上层做友好显示 (如 UNLOCK_MULTI err=11 NO_IR)
+        if (outErrCode) *outErrCode = err;   // Round_101: err 码透传给上层做友好显示 (如 UNLOCK_EPC err=11 NO_IR)
         if (outErrNote) *outErrNote = QString("失败 err=0x%1").arg(hex2(err));
         return false;
     }
@@ -3131,14 +3184,27 @@ void MainWindow::onAmGetStatus()
         return;
     }
     // sendZlrSubCmd 已剥掉 [cmd, link]: GET_STATUS 无独立 err, data[1]=link 被当作 err 校验,
-    // link=0(正常) 时校验通过, outPayload=data.mid(2)=[evtL,evtH,evt3,evt4, lastL..last4] (8B)
+    // link=0(正常) 时校验通过; outPayload=data.mid(2)
+    // V4 布局 (2026-09-19): [deact, deactCnt(4), failCnt(4)] + evt(4) + lastEvtMs(4) 共 13B
+    //   (旧 [evt(4), last(4)] 8B 布局已扩: 前三字段为消磁结算计数)
     QString out;
-    if (payload.size() >= 8) {
+    if (payload.size() >= 13) {
+        const quint8 deact = static_cast<quint8>(payload[0]);
+        quint32 deactCnt = static_cast<quint8>(payload[1]) | (static_cast<quint8>(payload[2]) << 8)
+                         | (static_cast<quint8>(payload[3]) << 16) | (static_cast<quint8>(payload[4]) << 24);
+        quint32 failCnt  = static_cast<quint8>(payload[5]) | (static_cast<quint8>(payload[6]) << 8)
+                         | (static_cast<quint8>(payload[7]) << 16) | (static_cast<quint8>(payload[8]) << 24);
+        quint32 evt = static_cast<quint8>(payload[9]) | (static_cast<quint8>(payload[10]) << 8)
+                    | (static_cast<quint8>(payload[11]) << 16) | (static_cast<quint8>(payload[12]) << 24);
+        out = QString("消磁结算=%1  成功累计=%2  失败累计=%3  cmd17帧累计=%4")
+                  .arg(deact == 1 ? "检测中" : "空闲").arg(deactCnt).arg(failCnt).arg(evt);
+    } else if (payload.size() >= 8) {
+        // 兼容旧固件布局: [evt(4), last(4)]
         quint32 evt = static_cast<quint8>(payload[0]) | (static_cast<quint8>(payload[1]) << 8)
                     | (static_cast<quint8>(payload[2]) << 16) | (static_cast<quint8>(payload[3]) << 24);
         quint32 last = static_cast<quint8>(payload[4]) | (static_cast<quint8>(payload[5]) << 8)
                      | (static_cast<quint8>(payload[6]) << 16) | (static_cast<quint8>(payload[7]) << 24);
-        out = QString("检测事件累计=%1  最近事件=%2ms").arg(evt).arg(last);
+        out = QString("检测事件累计=%1  最近事件=%2ms (旧布局, 无结算计数)").arg(evt).arg(last);
     } else out = QString("payload=%1B").arg(payload.size());
     if (m_zlrAmOut) m_zlrAmOut->append("AM 监控: " + out);
     appendSystemLog(QString("AM 监控: %1").arg(out), QColor("#50a050"));
@@ -3266,17 +3332,24 @@ void MainWindow::onLockerQuery()
         appendSystemLog(QString("开锁器 查询失败: %1").arg(err), QColor("#c050a0"));
         return;
     }
-    // [state, hmL,hmH, scL,scH, suL,suH]
-    static const char *stName[] = {"IDLE","CONFIGURED","UNLOCK_HOLD","SOFT_DECODE","DONE","FAULT"};
+    // V4: [state, hmL,hmH, scL,scH, suL,suH, faultReason]
+    static const char *stName[] = {"IDLE","CONFIGURED","UNLOCK_HOLD","SOFT_DECODE","DONE","FAULT","LOWERING","IR_WAIT"};
     QStringList v;
     if (payload.size() >= 7) {
         quint8 st = static_cast<quint8>(payload[0]);
         quint16 hm = static_cast<quint8>(payload[1]) | (static_cast<quint8>(payload[2]) << 8);
         quint16 sc = static_cast<quint8>(payload[3]) | (static_cast<quint8>(payload[4]) << 8);
         quint16 su = static_cast<quint8>(payload[5]) | (static_cast<quint8>(payload[6]) << 8);
-        v << QString("state=%1(%2)").arg(st).arg(st <= 5 ? stName[st] : "?");
+        v << QString("state=%1(%2)").arg(st).arg(st <= 7 ? stName[st] : "?");
         v << QString("硬标解锁=%1").arg(hm);
         v << QString("软标=%1/%2").arg(su).arg(sc);
+        if (payload.size() >= 8) {
+            quint8 fr = static_cast<quint8>(payload[7]);
+            if (fr != 0) {
+                static const char *frName[] = {"无","UHF链路","未回零","寻触启动失败","升寻触失败","升寻触失败","升寻触失败","回降寻触失败","回降启动失败"};
+                v << QString("故障归因=%1(%2)").arg(fr).arg(fr <= 8 ? frName[fr] : "?");
+            }
+        }
     } else v << QString("payload=%1B").arg(payload.size());
     if (m_zlrLockerOut) m_zlrLockerOut->append(v.join("  "));
     appendSystemLog(QString("开锁器 状态: %1").arg(v.join("  ")), QColor("#50a050"));
@@ -3309,20 +3382,19 @@ void MainWindow::onLockerGetEvent()
     appendSystemLog(QString("开锁器 事件: %1").arg(out), QColor("#50a050"));
 }
 
-// ===== Round027: 一键解锁 (ONE_SHOT) + 等待对话框 =====
+// ===== Round038: UNLOCK_EPC 解锁流程 + 等待对话框 (协议V4/Round_013, 0x0A UNLOCK_MULTI 已停用) =====
 
 // --- LockerWaitDialog impl ---
-// Round032: 协议更新 — 弹窗不再显示进度动画, 也不再 5s 轮询 GET_PROGRESS;
-//   进度全靠设备推送事件 (0x0B 确认/0x0C 失配/0x0D 硬标完成/0x0E 软标/0x0F 受理) 展示
+// Round038: 弹窗三行 — 0.5s GET_PROGRESS 轮询状态行 + 推送事件行 (0x0F 受理/0x0B 确认) + 终态行
 LockerWaitDialog::LockerWaitDialog(QWidget *parent) : QDialog(parent)
 {
-    setWindowTitle(tr("等待解锁中"));
+    setWindowTitle(tr("解锁进行中"));
     setModal(true);
     setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
-    resize(360, 200);
+    resize(400, 220);
     QPushButton *cancelBtn = new QPushButton(tr("停止"));
     cancelBtn->setObjectName("zlrMotorStop");   // 警示橙
-    cancelBtn->setToolTip(tr("发 CANCEL (0x04) 流程中安全打断"));
+    cancelBtn->setToolTip(tr("发 CANCEL (0x04) 主动结束: 停机+安全回降后回 endReason=6 终帧"));
     connect(cancelBtn, &QPushButton::clicked, this, &LockerWaitDialog::cancelRequested);
 
     auto *lay = new QVBoxLayout(this);
@@ -3332,7 +3404,14 @@ LockerWaitDialog::LockerWaitDialog(QWidget *parent) : QDialog(parent)
     auto *hint = new QLabel(tr("解锁进行中, 请稍候..."));
     hint->setAlignment(Qt::AlignCenter);
     lay->addWidget(hint);
-    // Round105: 推送事件实时行 (UNLOCK_MULTI 0x0B 确认/0x0C 失配/0x0D 硬标完成/0x0E 软标/0x0F 受理)
+    // Round038: GET_PROGRESS 轮询状态行 (阶段/已过ms/周期计数/lastCycle)
+    auto *progLabel = new QLabel("");
+    progLabel->setObjectName("lwd_progress");
+    progLabel->setAlignment(Qt::AlignCenter);
+    progLabel->setWordWrap(true);
+    progLabel->setStyleSheet("color:#886030; font-size:0.88em;");
+    lay->addWidget(progLabel);
+    // Round038: 推送事件实时行 (0x0F 受理 / 0x0B EPC 确认)
     auto *eventLabel = new QLabel("");
     eventLabel->setObjectName("lwd_event");
     eventLabel->setAlignment(Qt::AlignCenter);
@@ -3349,186 +3428,270 @@ LockerWaitDialog::LockerWaitDialog(QWidget *parent) : QDialog(parent)
     lay->addWidget(cancelBtn, 0, Qt::AlignCenter);
 }
 
-// Round_011: 原单标签 updateFinal (ONE_SHOT 终态) 已随 0x08 废除删除 — 终态统一走 updateFinalMulti
-// Round105: UNLOCK_MULTI 终态 — endReason 语义: 1=ALL_OK 2=PARTIAL_TIMEOUT 4=UHF_LOST 6=ABORTED
-// Round032: 协议 V2 新增 7=SOFT_TIMEOUT (软标窗 5min 满未校验完成)
-void LockerWaitDialog::updateFinalMulti(int endReason, int confirmed, int total, int bitmap, int softDone, int softCnt)
+// Round038: UNLOCK_EPC 终态 — endReason: 1=ALL_OK 2=EPC_LOST 3=TIMEOUT 4=UHF_LOST 6=ABORTED
+//   (err=0 成功终帧 15B: endReason/bitmap/rise/lower/elapsed/rsv4/cycles/okCycles/failCycles)
+void LockerWaitDialog::updateFinalEpc(int endReason, int cycles, int okCycles, int failCycles,
+                                      int rise, int lower, int elapsedMs)
 {
-    static const char *endNameMulti[] = {"?","ALL_OK","PARTIAL_TIMEOUT","?","UHF_LOST","?","ABORTED","SOFT_TIMEOUT"};
-    const char *rTxt = (endReason >= 0 && endReason <= 7) ? endNameMulti[endReason] : "?";
-    m_finalTxt = QString("完成: endReason=%1(%2) 确认 %3/%4 (位图 0b%5) 软标 %6/%7")
-                     .arg(endReason).arg(rTxt).arg(confirmed).arg(total)
-                     .arg(QString::number(bitmap, 2).rightJustified(total > 0 ? total : 1, '0'))
-                     .arg(softDone).arg(softCnt);
+    static const char *endNameEpc[] = {"?","ALL_OK","EPC_LOST","TIMEOUT","UHF_LOST","?","ABORTED"};
+    const char *rTxt = (endReason >= 0 && endReason <= 6) ? endNameEpc[endReason] : "?";
+    m_finalTxt = QString("完成: endReason=%1(%2)  周期 %3 (成功 %4 / 失败 %5)  升%6步/降%7步  历时 %8s")
+                     .arg(endReason).arg(rTxt).arg(cycles).arg(okCycles).arg(failCycles)
+                     .arg(rise).arg(lower).arg(elapsedMs / 1000.0, 0, 'f', 1);
     if (auto *l = findChild<QLabel *>("lwd_final")) {
         l->setText(m_finalTxt);
-        l->setStyleSheet((endReason == 1 && confirmed == total)
+        l->setStyleSheet((endReason == 1)
             ? "color:#2a8030; font-size:0.9em; font-weight:bold;"
             : "color:#c05050; font-size:0.9em; font-weight:bold;");
     }
 }
 
-// Round105: 推送事件实时行 — 只显示最近一条 (完整明细在开锁器输出区)
+// Round039: UNLOCK_AM 终态 — endReason: 1=ALL_OK 3=TIMEOUT 6=ABORTED (err=0 终帧 14B)
+void LockerWaitDialog::updateFinalAm(int endReason, int amCnt, int deactDone, int deactFail,
+                                     int rise, int lower, int elapsedSec)
+{
+    static const char *endNameAm[] = {"?","ALL_OK","?","TIMEOUT","?","?","ABORTED"};
+    const char *rTxt = (endReason >= 0 && endReason <= 6) ? endNameAm[endReason] : "?";
+    // 2026-09 修订: 全程不动电机, rise/lower 恒 0 — 不再显示升降步数
+    m_finalTxt = QString("完成: endReason=%1(%2)  解锁 %3/%4 张 (失败 %5)  历时 %6s")
+                     .arg(endReason).arg(rTxt).arg(deactDone).arg(amCnt).arg(deactFail).arg(elapsedSec);
+    if (auto *l = findChild<QLabel *>("lwd_final")) {
+        l->setText(m_finalTxt);
+        l->setStyleSheet((endReason == 1)
+            ? "color:#2a8030; font-size:0.9em; font-weight:bold;"
+            : "color:#c05050; font-size:0.9em; font-weight:bold;");
+    }
+}
+
+// Round038: err≠0 终帧 (BUSY/UHF_OPEN/HOMING/MOTOR_FAULT/MOTOR_TIMEOUT/NO_IR 等) 失败文案
+void LockerWaitDialog::updateFail(const QString &txt)
+{
+    m_finalTxt = txt;
+    if (auto *l = findChild<QLabel *>("lwd_final")) {
+        l->setText(m_finalTxt);
+        l->setStyleSheet("color:#c05050; font-size:0.9em; font-weight:bold;");
+    }
+}
+
+// Round038: GET_PROGRESS 0.5s 轮询状态行 (阶段/已过ms/周期计数/lastCycle)
+void LockerWaitDialog::updateProgress(const QString &txt)
+{
+    if (auto *l = findChild<QLabel *>("lwd_progress"))
+        l->setText(txt);
+}
+
+// Round038: 推送事件实时行 — 只显示最近一条 (完整明细在开锁器输出区)
 void LockerWaitDialog::updateEvent(const QString &txt)
 {
     if (auto *l = findChild<QLabel *>("lwd_event"))
         l->setText(txt);
 }
 
-// --- 槽实现 ---
-// Round_011: 原单标签 ONE_SHOT 表 (kLockerEndReason/kLockerPhase 0~7) 已随 0x08 废除删除
-// Round032: GET_PROGRESS 5s 轮询已废 (协议更新后弹窗只接收上报事件) — 终态表在 runLockerUnlockMulti 内
-
+// Round038: 仅关弹窗 — 流程轮询/标志由 stopUnlockPolling 管 (关窗后设备流程继续, 结果仍落输出区)
 void MainWindow::closeLockerWaitDialog()
 {
-    if (m_zlrLockerCancelGuard)   { m_zlrLockerCancelGuard->stop();   m_zlrLockerCancelGuard->deleteLater();   m_zlrLockerCancelGuard   = nullptr; }
-    if (m_zlrLockerWait)          { m_zlrLockerWait->accept();         m_zlrLockerWait->deleteLater();         m_zlrLockerWait          = nullptr; }
-    m_zlrLockerWinMs = 0;   // Round_011: 复位解锁窗
+    if (m_zlrLockerWait)          { m_zlrLockerWait->accept();         m_zlrLockerWait->deleteLater();         m_zlrLockerWait = nullptr; }
+    m_zlrLockerWinMs = 0;
 }
 
-// Round_011: 0x08 ONE_SHOT 已废除 (固件不解析帧形状, 一律回 err=2 PARAM, App_LockerOneShot 模块移除)
-//   解锁统一走 0x0A UNLOCK_MULTI — 单标 epcCnt=1 (W=2min), 多标 ≤4 张; 均阻塞 + 推送事件实时展示
+// Round038: UNLOCK_EPC (0x10) 唯一开锁通道 — 单标签 EPC, 单帧下发, 设备阻塞自治
+//   (协议V4/Round_013: 0x0A UNLOCK_MULTI 停用恒回 err=2 PARAM, 多标签清单仅用于 CONFIGURE/ADD 管理)
 void MainWindow::onLockerOneShot()
 {
     if (!m_zlrLockerUnlockEpc) return;
-    QString hex = m_zlrLockerUnlockEpc->text().trimmed();
+    if (m_zlrUnlockActive) {
+        appendSystemLog("开锁器: 解锁流程进行中, 请先停止或等待终帧", QColor("#d08020"));
+        return;
+    }
+    if (!m_transport || !m_transport->isOpen()) {
+        appendSystemLog("开锁器: 请先连接设备", QColor("#d08020"));
+        return;
+    }
+    const QString hex = m_zlrLockerUnlockEpc->text().trimmed();
     if (hex.isEmpty()) {
         appendSystemLog("开锁器: 请输入期望EPC", QColor("#d08020"));
         return;
     }
-    // 多 EPC 解析: 空格/逗号/分号 (含全角) 分隔
-    QString norm = hex;
-    norm.replace(',', ' ').replace(';', ' ').replace("，", " ").replace("；", " ");
-    const QStringList tokens = norm.split(' ', Qt::SkipEmptyParts);
-    QList<QByteArray> epcs;
-    for (const QString &t : tokens) {
-        QByteArray e = QByteArray::fromHex(t.toLatin1());
-        if (e.isEmpty() || e.size() < 1 || e.size() > 12) {
-            appendSystemLog(QString("开锁器: EPC \"%1\" 需为 1~12 字节 hex").arg(t), QColor("#d08020"));
-            return;
-        }
-        epcs.append(e);
-    }
-    if (epcs.size() > 4) {
-        appendSystemLog("开锁器: UNLOCK_MULTI 最多 4 张 EPC", QColor("#d08020"));
+    if (hex.contains(' ') || hex.contains(',') || hex.contains(';')
+        || hex.contains("，") || hex.contains("；")) {
+        appendSystemLog("开锁器: UNLOCK_EPC 为单标签指令, 请只输入 1 张 EPC (1~12B hex)", QColor("#d08020"));
         return;
     }
-    if (epcs.size() >= 2) {
-        // 协议 0x0A 布局为单一 epcLen — 各 EPC 字节数必须一致
-        for (const QByteArray &e : epcs) {
-            if (e.size() != epcs[0].size()) {
-                appendSystemLog("开锁器: 多标签各 EPC 字节数须一致 (协议单 epcLen 域)", QColor("#d08020"));
-                return;
-            }
-        }
+    const QByteArray epc = QByteArray::fromHex(hex.toLatin1());
+    if (epc.isEmpty() || epc.size() > 12) {
+        appendSystemLog(QString("开锁器: EPC \"%1\" 需为 1~12 字节 hex").arg(hex), QColor("#d08020"));
+        return;
     }
-    runLockerUnlockMulti(epcs);
+    runLockerUnlockEpc(epc);
 }
 
-// Round_011: UNLOCK_MULTI (0x0A) 唯一开锁通道 — 单标 epcCnt=1 / 多标 ≤4 张
-//   阻塞等终帧, 期间 0x0B~0x0F 推送事件实时展示 (Round032 起不再轮询 GET_PROGRESS)
-//   请求: [cmd, tmo(2), hold(2), softCnt, epcCnt, epcLen, epcCnt*epcLen] (协议 §13.1 V2, 固件 App_Dispatch.c)
-//   tmoMs = EPC 单次盘点时限 (0→设备缺省500, 上限10000) — 解锁区输入框, 默认 500ms;
-//   holdMs = 解锁总窗: Round035 起隐藏固定下发 0 → 设备公式 W = 120000+(m-1)*30000 (绝对上限240000);
-//   softCnt>0 软标窗最长 5min
-void MainWindow::runLockerUnlockMulti(const QList<QByteArray> &epcs)
+// Round038: 原路写一帧 (fire-and-forget, 不等响应) — UNLOCK_EPC 下发 / CANCEL 主动结束 / 看门狗兜底
+//   响应/终帧由轮询循环 (sendZlrSubCmd keepWaiting 回调 → handleLockerPushEvent) 接收处理
+void MainWindow::writeZlrFrame(quint8 fc, const QByteArray &data)
 {
-    const quint16 tmo  = m_zlrLockerTmo ? static_cast<quint16>(m_zlrLockerTmo->value()) : 500;
-    const quint16 hold = 0;   // Round035: hold 固定 0 — 设备按公式取解锁总窗 W
-    const quint8 softCnt = m_zlrLockerDemagCnt ? static_cast<quint8>(m_zlrLockerDemagCnt->value()) : 0;
-    const quint8 epcLen = static_cast<quint8>(epcs[0].size());
-    const quint8 epcCnt = static_cast<quint8>(epcs.size());
-    QByteArray arg;
-    arg.append(static_cast<char>(tmo & 0xFF));
-    arg.append(static_cast<char>((tmo >> 8) & 0xFF));
-    arg.append(static_cast<char>(hold & 0xFF));
-    arg.append(static_cast<char>((hold >> 8) & 0xFF));
-    arg.append(static_cast<char>(softCnt));
-    arg.append(static_cast<char>(epcCnt));
-    arg.append(static_cast<char>(epcLen));
-    for (const QByteArray &e : epcs) arg.append(e);
+    if (!m_transport || !m_transport->isOpen()) return;
+    const QByteArray req = m_parser->makeFrame(m_deviceAddr, fc, data);
+    m_transport->writeData(req);
+    m_transport->waitForBytesWritten(5000);
+    // 日志含 USB HID 报告 ID 0x02 前缀, 与 sendZlrSubCmd 的 TX 打印一致
+    QByteArray txWire = req;
+    if (m_transportType == TransportType::Usb) txWire.prepend(static_cast<char>(0x02));
+    appendLog("[SYS][TX]", txWire, QColor("#c050a0"));
+}
 
-    // 等待超时 = 解锁总窗 W (hold=0 → 公式 120000+(m-1)*30000) + 软标窗(最多 5min, +10s 余量) + 升降/盘点余量 40s
-    const int winMs = 120000 + (epcCnt - 1) * 30000;
-    const int timeoutMs = winMs + (softCnt > 0 ? 310000 : 0) + 40000;
+// Round038: UNLOCK_EPC (0x10) 流程 — 协议V4 §13.1
+//   请求 data: [cmd, epcLen, tmoL,tmoH, winL,winH, holdTopL,holdTopH, rsv0, rsv1,rsv2,rsv3, epc(epcLen)] (12+epcLen)
+//     tmoMs 单发盘点时限(0→100) / winMs 单轮光电等待窗 W(0→20000) / holdTopMs 顶部保持(0→3000, 上限60000)
+//     rsv0 流程超时秒: 0=单轮, >0=循环周期模式
+//   设备阻塞自治 (红外门控→3发稳定确认→升起监守→顶部保持→回降), 期间推 0x0F 受理/0x0B 确认,
+//   流程结束回 0x10 终帧 (err=0 带 endReason, 或 1/2/3/7/8/9/11 变体)
+//   本机侧: fire-and-forget 下发 + 弹窗 + 500ms GET_PROGRESS(0x09) 定时轮询 (协议建议 0.5s 级) + 看门狗;
+//   过程中可随时"停止"→CANCEL(0x04) 主动结束, 终帧 endReason=6 ABORTED 仍由轮询接收展示
+void MainWindow::runLockerUnlockEpc(const QByteArray &epc)
+{
+    // Round039: tmo/win 走协议缺省 (0→100 / 0→20000); holdTop + 流程窗秒(rsv0) 可调
+    const quint16 tmo     = 0;   // 0→设备缺省 100
+    const quint16 win     = 0;   // 0→设备缺省 20000
+    const quint16 holdTop = m_zlrLockerHoldTop ? static_cast<quint16>(m_zlrLockerHoldTop->value()) : 3000;
+    const quint8 holdSec  = m_zlrLockerHoldSec ? static_cast<quint8>(m_zlrLockerHoldSec->value()) : 0;
 
-    // 弹等待框 (Round032: 不轮询, 进度全靠 0x0B~0x0F 上报事件)
+    // data = [cmd] + [epcLen, tmo(2), win(2), holdTop(2), rsv0, rsv1..3, epc]
+    QByteArray data;
+    data.append(static_cast<char>(0x10));   // cmd UNLOCK_EPC
+    data.append(static_cast<char>(epc.size()));
+    data.append(static_cast<char>(tmo & 0xFF));
+    data.append(static_cast<char>((tmo >> 8) & 0xFF));
+    data.append(static_cast<char>(win & 0xFF));
+    data.append(static_cast<char>((win >> 8) & 0xFF));
+    data.append(static_cast<char>(holdTop & 0xFF));
+    data.append(static_cast<char>((holdTop >> 8) & 0xFF));
+    data.append(static_cast<char>(holdSec));   // rsv0: 流程超时秒 (0=单轮 / >0=流程窗内周期往复)
+    data.append(static_cast<char>(0));         // rsv1
+    data.append(static_cast<char>(0));         // rsv2
+    data.append(static_cast<char>(0));         // rsv3
+    data.append(epc);
+
+    // 看门狗: 流程窗 (单轮=缺省 20000 / holdSec 秒) + 顶部保持 + 升降/校对余量 60s
+    m_zlrUnlockWatchMs = (holdSec > 0 ? holdSec * 1000 : 20000) + holdTop + 60000;
+    m_zlrUnlockWatch.start();
+    m_zlrUnlockActive = true;
+    m_zlrLockerCancelSent = false;
+    m_zlrUnlockLastPhase = 0xFF;
+
+    // 弹等待框 (状态行 0.5s 轮询 + 推送事件行 + 终态行 + 停止按钮)
     if (m_zlrLockerWait) closeLockerWaitDialog();
-    m_zlrLockerWinMs = winMs;
+    m_zlrLockerWinMs = 0;
     m_zlrLockerWait = new LockerWaitDialog(this);
     connect(m_zlrLockerWait, &LockerWaitDialog::cancelRequested, this, &MainWindow::onLockerCancelUnlock);
     connect(m_zlrLockerWait, &QDialog::rejected, this, [this]{
+        // 仅关窗 — 设备流程与轮询继续, 终帧/结果仍落输出区与系统日志
         if (m_zlrLockerWait) closeLockerWaitDialog();
     });
     m_zlrLockerWait->show();
 
-    appendSystemLog(QString("开锁器: 下发 UNLOCK_MULTI tmo=%1 W=%2s softCnt=%3 标签数=%4")
-                        .arg(tmo).arg(winMs / 1000.0, 0, 'f', 1).arg(softCnt).arg(epcCnt), QColor("#d08020"));
+    const QString epcHex = QString::fromLatin1(epc.toHex()).toUpper();
+    m_zlrUnlockCmd = 0x10;   // Round039: 当前流程命令 — 终帧/事件路由用
+    // Round039: tmo/win 走协议缺省, 日志只报保持时间 + 流程窗
+    const QString modeTxt = holdSec > 0 ? QString("保持 %1s 流程窗").arg(holdSec) : QString("单轮");
+    appendSystemLog(QString("开锁器: 下发 UNLOCK_EPC EPC=%1 (%2B) 顶部保持=%3ms %4 (tmo/win 协议缺省)")
+                        .arg(epcHex).arg(epc.size()).arg(holdTop == 0 ? 3000 : holdTop).arg(modeTxt),
+                    QColor("#d08020"));
     if (m_zlrLockerOut)
-        m_zlrLockerOut->append(QString("— UNLOCK_MULTI 下发: %1 张 EPC (每张 %2B) 软标 %3, 窗 W=%4s —")
-                                   .arg(epcCnt).arg(epcLen).arg(softCnt).arg(winMs / 1000.0, 0, 'f', 1));
+        m_zlrLockerOut->append(QString("— UNLOCK_EPC 下发: EPC=%1 (%2B) %3, 0.5s 轮询进度, 停止=CANCEL —")
+                                   .arg(epcHex).arg(epc.size()).arg(modeTxt));
 
-    // Round032: 不再启 5s GET_PROGRESS 轮询 — 弹窗进度全靠 0x0B~0x0F 上报事件 (handleLockerPushEvent)
+    // 单帧下发 (fire-and-forget): 0x0F 受理推帧/快速拒绝终帧 均由轮询回调接收
+    writeZlrFrame(0x23, data);
 
-    QByteArray payload;
-    QString err;
-    quint8 rspErr = 0;
-    const bool ok = sendZlrSubCmd(0x23, 0x0A, arg, &payload, &err, timeoutMs,
-                                   /*clearRxBuffer=*/true, /*keepWaitingOnNonMatch=*/true, &rspErr,
-                                   [this](const QByteArray &f){ handleLockerPushEvent(f); });
-    if (!ok) {
-        static const char *kUnlockErrName[] = {   // UNLK_ERR_* (协议 §13.4)
-            "OK","BUSY","PARAM","UHF_OPEN","UHF_LINK","?","?","HOMING","MOTOR_FAULT","MOTOR_TIMEOUT","AM_LINK","NO_IR"
-        };
-        const char *eName = (rspErr <= 11) ? kUnlockErrName[rspErr] : "?";
-        appendSystemLog(QString("开锁器 UNLOCK_MULTI 失败: err=%1(%2) — %3")
-                            .arg(rspErr).arg(eName).arg(err), QColor("#c050a0"));
-        if (m_zlrLockerOut) m_zlrLockerOut->append(QString("[失败] err=%1(%2) %3").arg(rspErr).arg(eName).arg(err));
+    // 轮询定时器 (500ms); 先立即首拉一次 — 快速拒绝终帧 (BUSY/HOMING 等) 与受理帧尽早进弹窗
+    if (!m_zlrLockerPollTimer) {
+        m_zlrLockerPollTimer = new QTimer(this);
+        m_zlrLockerPollTimer->setInterval(500);
+        connect(m_zlrLockerPollTimer, &QTimer::timeout, this, &MainWindow::onLockerPollTimeout);
+    }
+    m_zlrLockerPollTimer->start(500);
+    onLockerPollTimeout();
+}
+
+// Round038: 500ms GET_PROGRESS(0x09) 定时拉取 + 流程看门狗
+//   轮询循环同时是流程帧的读取通道: keepWaiting 非目标帧 (0x0F/0x0B/0x0E 推送, 0x10/0x11 终帧)
+//   经回调 handleLockerPushEvent 处理; pollBusy 防 waitForResponse 的 processEvents 嵌套重入
+//   GET_PROGRESS 布局复用: 0x10 与 0x11 流程字段语义不同 (见轮询内 m_zlrUnlockCmd 分支)
+void MainWindow::onLockerPollTimeout()
+{
+    if (!m_zlrUnlockActive || m_zlrLockerPollBusy) return;
+    m_zlrLockerPollBusy = true;
+
+    // 看门狗: 超时未收终帧 — 补发 CANCEL 尝试停机 + 停轮询收尾
+    if (m_zlrUnlockWatch.hasExpired(m_zlrUnlockWatchMs)) {
+        appendSystemLog(QString("开锁器: 解锁流程 %1s 未收终帧, 补发 CANCEL 并停止轮询")
+                            .arg(m_zlrUnlockWatchMs / 1000), QColor("#c050a0"));
+        if (m_zlrLockerOut)
+            m_zlrLockerOut->append(QString("[看门狗] %1s 无终帧, 已补发 CANCEL, 停止轮询").arg(m_zlrUnlockWatchMs / 1000));
+        writeZlrFrame(0x23, QByteArray(1, static_cast<char>(0x04)));   // CANCEL 兜底
+        stopUnlockPolling();
         closeLockerWaitDialog();
+        m_zlrLockerPollBusy = false;
         return;
     }
 
-    // 终帧 payload (cmd+err 已剥) = [endReason, bitmap, confirmed, total, rise(2), lower(2), softDone, softCnt, elapsed(2)]
-    int endReason = 0, bitmap = 0, confirmed = 0, total = 0, softDone = 0, softCntR = 0, elapsedMs = 0;
-    quint16 rise = 0, lower = 0;
-    if (payload.size() >= 5) {
-        endReason = static_cast<quint8>(payload[0]);
-        bitmap    = static_cast<quint8>(payload[1]);
-        confirmed = static_cast<quint8>(payload[2]);
-        total     = static_cast<quint8>(payload[3]);
-    }
-    if (payload.size() >= 9) {
-        rise  = static_cast<quint8>(payload[4]) | (static_cast<quint8>(payload[5]) << 8);
-        lower = static_cast<quint8>(payload[6]) | (static_cast<quint8>(payload[7]) << 8);
-    }
-    if (payload.size() >= 12) {
-        softDone = static_cast<quint8>(payload[8]);
-        softCntR = static_cast<quint8>(payload[9]);
-        elapsedMs = static_cast<quint8>(payload[10]) | (static_cast<quint8>(payload[11]) << 8);
-    }
-    static const char *kUnlockEnd[] = {"?","ALL_OK","PARTIAL_TIMEOUT","?","UHF_LOST","?","ABORTED","SOFT_TIMEOUT"};
-    const char *eTxt = (endReason >= 0 && endReason <= 7) ? kUnlockEnd[endReason] : "?";
-    QString bmTxt = QString::number(bitmap, 2).rightJustified(total > 0 ? total : 1, '0');
+    // GET_PROGRESS: 不清 buffer (保留流程帧), 非目标帧 (推送/终帧) 交回调处理后丢弃继续等
+    QByteArray payload;
+    QString err;
+    sendZlrSubCmd(0x23, 0x09, QByteArray(), &payload, &err, 900,
+                  /*clearRxBuffer=*/false, /*keepWaitingOnNonMatch=*/true, nullptr,
+                  [this](const QByteArray &f){ handleLockerPushEvent(f); });
 
-    QString result = QString("UNLOCK_MULTI 完成: end=%1(%2)  确认 %3/%4 (位图 0b%5)  rise=%6 lower=%7 软标 %8/%9 历时 %10s")
-                       .arg(endReason).arg(eTxt).arg(confirmed).arg(total).arg(bmTxt)
-                       .arg(rise).arg(lower).arg(softDone).arg(softCntR).arg(elapsedMs / 1000.0, 0, 'f', 1);
-    if (m_zlrLockerOut) m_zlrLockerOut->append(result);
-    // 全部确认=成功(绿); PARTIAL/UHF_LOST/ABORTED 按结果着色
-    appendSystemLog(QString("开锁器 %1").arg(result),
-                    QColor((endReason == 1 && confirmed == total) ? "#50a050" : "#d08020"));
-
-    if (m_zlrLockerWait) {
+    // 流程可能刚被终帧收尾 (回调内 stopUnlockPolling) — 仍激活才刷新状态行
+    if (m_zlrUnlockActive && payload.size() >= 10) {
+        // payload (cmd+err 已剥): [phase, holdMs(3 LE), total, confirmed, bitmap, softCnt, softDone, lastCycle]
+        //   0x10 流程: total/confirmed=1/已确认, softCnt/softDone=周期数/成功周期数, lastCycle=上轮结果
+        //   0x11 流程: total/softCnt=amCnt, confirmed/softDone=已解锁数, lastCycle 恒 0
+        const quint8 phase     = static_cast<quint8>(payload[0]);
+        const quint32 holdMs  = static_cast<quint8>(payload[1]) | (static_cast<quint8>(payload[2]) << 8)
+                              | (static_cast<quint8>(payload[3]) << 16);
+        const quint8 cycles    = static_cast<quint8>(payload[7]);
+        const quint8 okCycles  = static_cast<quint8>(payload[8]);
+        const quint8 lastCycle = static_cast<quint8>(payload[9]);
+        static const char *phName[] = {"IDLE", "等放标", "持续校对", "升起", "回降", "计数窗", "?", "顶部保持"};
+        static const char *lcName[] = {"无/进行中", "成功", "移除", "更换"};
+        QString st;
+        if (m_zlrUnlockCmd == 0x11) {
+            // 0x11 修订: 零控制纯计数 — 轮询实际只见 phase 5 (计数窗), 无 3/7/4 机械段
+            st = QString("阶段: %1   已过 %2s   已解锁 %3/%4 张")
+                    .arg(phase <= 7 ? phName[phase] : "?")
+                    .arg(holdMs / 1000.0, 0, 'f', 1).arg(okCycles).arg(cycles);
+            if (m_zlrLockerCancelSent) st.prepend("停止中...  ");
+        } else {
+            st = QString("阶段: %1   已过 %2s   周期 %3 (成功 %4)   上轮: %5")
+                    .arg(phase <= 7 ? phName[phase] : "?")
+                    .arg(holdMs / 1000.0, 0, 'f', 1).arg(cycles).arg(okCycles)
+                    .arg(lastCycle <= 3 ? lcName[lastCycle] : "?");
+            if (m_zlrLockerCancelSent) st.prepend("停止中, 等待安全回降...  ");
+        }
         if (auto *dlg = qobject_cast<LockerWaitDialog *>(m_zlrLockerWait))
-            dlg->updateFinalMulti(endReason, confirmed, total, bitmap, softDone, softCntR);
-        QTimer::singleShot(800, this, [this]{ closeLockerWaitDialog(); });
+            dlg->updateProgress(st);
+        // 阶段变化才记输出区 (0.5s 轮询不刷屏)
+        if (phase != m_zlrUnlockLastPhase) {
+            if (phase != 0 && m_zlrLockerOut)
+                m_zlrLockerOut->append(QString("[进度] 进入阶段: %1").arg(phase <= 7 ? phName[phase] : "?"));
+            m_zlrUnlockLastPhase = phase;
+        }
+    } else if (m_zlrUnlockActive) {
+        // 轮询无响应 (链路抖动/设备忙): 状态行提示, 继续下一轮 (看门狗兜底)
+        if (auto *dlg = qobject_cast<LockerWaitDialog *>(m_zlrLockerWait))
+            dlg->updateProgress(QString("轮询无响应: %1").arg(err));
     }
+    m_zlrLockerPollBusy = false;
 }
 
-// Round105: 0x0B~0x0F 推送事件帧解析 + 实时展示 (协议 §13.3 推送表, 原路回 func=0xF2)
-//   帧经 sendZlrSubCmd keepWaiting 分支回调而来 (data 含 0x02 报告 ID 前缀时 parseFrame 自动容忍)
+// Round038: 流程帧解析+实时展示 — 经轮询 sendZlrSubCmd keepWaiting 回调而来 (func=0x23^0xFF=0xDC 原路回)
+//   0x0F 受理 / 0x0B EPC 确认 (推送, 每周期一帧); 0x10 终帧 → finishUnlockEpc 渲染收尾
+//   周期失败 (移除/更换) 不推帧 — 状态经 GET_PROGRESS lastCycle 轮询拉取
+//   (data 含 0x02 报告 ID 前缀时 parseFrame 自动容忍)
 void MainWindow::handleLockerPushEvent(const QByteArray &frame)
 {
+    if (!m_zlrUnlockActive) return;   // 非解锁流程的迟到帧 — 忽略
     FrameData parsed = m_parser->parseFrame(frame);
     if (!parsed.valid || parsed.data.isEmpty()) return;
     const QByteArray &d = parsed.data;
@@ -3539,87 +3702,326 @@ void MainWindow::handleLockerPushEvent(const QByteArray &frame)
         if (d.size() < 6) return;
         m_zlrLockerWinMs = static_cast<quint8>(d[3]) | (static_cast<quint8>(d[4]) << 8)
                          | (static_cast<quint8>(d[5]) << 16);
-        txt = QString("✓ 受理: 解锁窗 W=%1s (自放标起算)").arg(m_zlrLockerWinMs / 1000.0, 0, 'f', 1);
+        txt = QString("✓ 受理: 解锁窗 %1s").arg(m_zlrLockerWinMs / 1000.0, 0, 'f', 1);
         break;
     }
-    case 0x0B: {   // EVT_TAG 确认: [0B, seq, epcLen, epc.., confirmed, total, 判据ms(2), 流程ms(2)]
+    case 0x0B: {   // EVT_TAG 确认: [0B, seq(=1), epcLen, epc.., confirmed(=1), total(=1), 判据ms(2), 流程ms(2)]
         if (d.size() < 4) return;
-        const int seq = static_cast<quint8>(d[1]);
         const int eLen = static_cast<quint8>(d[2]);
         if (d.size() < 3 + eLen + 6) return;
         const QString epcHex = QString::fromLatin1(d.mid(3, eLen).toHex()).toUpper();
-        const int confirmed = static_cast<quint8>(d[3 + eLen]);
-        const int total = static_cast<quint8>(d[4 + eLen]);
+        // 布局: [0B, seq, epcLen, epc.., confirmed(3+eLen), total(4+eLen), 判据(5+eLen,2), 流程(7+eLen,2)]
         const int judgeMs = static_cast<quint8>(d[5 + eLen]) | (static_cast<quint8>(d[6 + eLen]) << 8);
         const int flowMs  = static_cast<quint8>(d[7 + eLen]) | (static_cast<quint8>(d[8 + eLen]) << 8);
-        txt = QString("✓ 确认 #%1/%2: EPC=%3 (判据 %4s, 流程 %5s)")
-                  .arg(seq).arg(total).arg(epcHex).arg(judgeMs / 1000.0, 0, 'f', 1).arg(flowMs / 1000.0, 0, 'f', 1);
+        txt = QString("✓ EPC 确认: %1 (判据 %2s, 流程 %3s) — 磁块升起监守")
+                  .arg(epcHex).arg(judgeMs / 1000.0, 0, 'f', 1).arg(flowMs / 1000.0, 0, 'f', 1);
         break;
     }
-    case 0x0C: {   // EVT_MISMATCH 失配: [0C, epcLen, epc.., hits] (不终止) — 协议V2: 外来标签稳定确认一张一帧(单向掩码不重报)
-        if (d.size() < 2) return;
-        const int eLen = static_cast<quint8>(d[1]);
-        if (d.size() < 2 + eLen + 1) return;
-        const QString epcHex = eLen > 0 ? QString::fromLatin1(d.mid(2, eLen).toHex()).toUpper() : "—";
-        const int hits = static_cast<quint8>(d[2 + eLen]);
-        txt = QString("✗ 外来EPC %1 (稳定确认, 累计读到 %2 次, 不终止)").arg(epcHex).arg(hits);
-        break;
-    }
-    case 0x0D: {   // EVT_HARD_DONE 硬标段完成: [0D, endReason, bitmap, confirmed, total, elapsed(2)]
-        // 协议V2: 磁块保持升起 (回降移至整个流程结束), softCnt>0 随即进入软标段
-        if (d.size() < 7) return;
-        const int endReason = static_cast<quint8>(d[1]);
-        const int bitmap = static_cast<quint8>(d[2]);
-        const int confirmed = static_cast<quint8>(d[3]);
-        const int total = static_cast<quint8>(d[4]);
-        const int elapsedMs = static_cast<quint8>(d[5]) | (static_cast<quint8>(d[6]) << 8);
-        static const char *eName[] = {"?","ALL_OK","PARTIAL_TIMEOUT","?","UHF_LOST","?","ABORTED"};
-        const int softCnt = m_zlrLockerDemagCnt ? m_zlrLockerDemagCnt->value() : 0;
-        txt = QString("◆ 硬标段完成: %1 (位图 0b%2, %3/%4) 历时 %5s, %6")
-                  .arg((endReason <= 6) ? eName[endReason] : "?")
-                  .arg(QString::number(bitmap, 2).rightJustified(total > 0 ? total : 1, '0'))
-                  .arg(confirmed).arg(total).arg(elapsedMs / 1000.0, 0, 'f', 1)
-                  .arg(softCnt > 0 ? "磁块保持升起, 进入软标段..." : "磁块保持升起, 等待回降...");
-        break;
-    }
-    case 0x0E: {   // EVT_SOFT 软标解码: [0E, done, softCnt]
+    case 0x0E: {   // Round039: EVT_SOFT 每解锁一张 (UNLOCK_AM): [0E, done, amCnt] + 白单闪, 无蜂鸣
         if (d.size() < 3) return;
-        txt = QString("✓ 软标消磁 %1/%2").arg(static_cast<quint8>(d[1])).arg(static_cast<quint8>(d[2]));
+        txt = QString("✓ AM 消磁: 已解锁 %1/%2 张 (静默3s结算, 多帧重试属正常)")
+                  .arg(static_cast<quint8>(d[1])).arg(static_cast<quint8>(d[2]));
         break;
+    }
+    case 0x10: {   // UNLOCK_EPC 终帧 (流程结束标志, 随 err 变体) — 交 finishUnlockEpc
+        appendLog("[SYS][RX]", frame, QColor("#30b078"));
+        finishUnlockEpc(d);
+        return;
+    }
+    case 0x11: {   // Round039: UNLOCK_AM 终帧 (流程结束标志, 随 err 变体) — 交 finishUnlockAm
+        appendLog("[SYS][RX]", frame, QColor("#30b078"));
+        finishUnlockAm(d);
+        return;
     }
     default:
         return;   // 非事件帧 (0x09 迟到响应等) — 静默丢弃
     }
+    // keepWaiting 分支不经过 sendZlrSubCmd 的 RX 打印 — 线上帧在此入主日志
+    appendLog("[SYS][RX]", frame, QColor("#30b078"));
     if (m_zlrLockerOut) m_zlrLockerOut->append(QString("[事件] %1").arg(txt));
     if (auto *dlg = qobject_cast<LockerWaitDialog *>(m_zlrLockerWait))
         dlg->updateEvent(txt);
-    // 确认/软标=绿; 失配=警示
-    appendSystemLog(QString("开锁器 %1").arg(txt),
-                    QColor((ev == 0x0B || ev == 0x0E || ev == 0x0F || ev == 0x0D) ? "#50a050" : "#d08020"));
+    appendSystemLog(QString("开锁器 %1").arg(txt), QColor("#50a050"));
 }
 
-// Round032: onLockerProgress (5s GET_PROGRESS 轮询) 已废 — 协议更新后弹窗只接收上报事件, 函数整体删除
+// Round039: UNLOCK_AM (0x11) AM 标签解锁 — 协议V4 §13.4 (AM 开锁通道, 2026-09-19 16:10 修订: 零控制纯计数)
+//   请求 data: [cmd, amCnt, tmoL,tmoH, rsv0, rsv1] (6B)
+//     amCnt 期望张数 (0=直接完成支路: 无计数门, 首查即达标, 不耗窗直接结账 ALL_OK);
+//     tmo u16 秒计数窗 (>0, 上限 16000)
+//   设备零控制 AM 解码器 (上电不下发/受理不探链不切模式/出口不还原), 解码器按默认参数消磁,
+//   设备仅被动收 cmd17 计数 (静默 3s 结算一张); 全程不动电机 — 数够 amCnt 张即结账 (rise/lower 恒 0);
+//   解码器静默只能窗满结账 (TIMEOUT). 终帧 0x11 err=0 (14B) / 1 BUSY / 2 PARAM(tmo=0);
+//   7 HOMING / 8 MOTOR_FAULT / 9 MOTOR_TIMEOUT / 10 AM_LINK 编码保留不可达
+void MainWindow::onLockerAmUnlock()
+{
+    if (m_zlrUnlockActive) {
+        appendSystemLog("开锁器: 解锁流程进行中, 请先停止或等待终帧", QColor("#d08020"));
+        return;
+    }
+    if (!m_transport || !m_transport->isOpen()) {
+        appendSystemLog("开锁器: 请先连接设备", QColor("#d08020"));
+        return;
+    }
+    const int amCnt = m_zlrLockerAmCnt ? m_zlrLockerAmCnt->value() : 1;
+    const int tmoSec = m_zlrLockerAmTmo ? m_zlrLockerAmTmo->value() : 60;
+    if (tmoSec <= 0) {   // 协议 PARAM: tmo 必须 >0
+        appendSystemLog("开锁器: AM 计数窗 tmo 必须 >0 秒", QColor("#d08020"));
+        return;
+    }
+    runLockerUnlockAm(amCnt, tmoSec);
+}
 
+// Round039: UNLOCK_AM 单帧下发 (fire-and-forget) + 弹窗 + 轮询 + 看门狗 (复用 EPC 轮询/停止/看门狗机制)
+void MainWindow::runLockerUnlockAm(int amCnt, int tmoSec)
+{
+    QByteArray data;
+    data.append(static_cast<char>(0x11));   // cmd UNLOCK_AM
+    data.append(static_cast<char>(amCnt));
+    data.append(static_cast<char>(tmoSec & 0xFF));
+    data.append(static_cast<char>((tmoSec >> 8) & 0xFF));
+    data.append(static_cast<char>(0));     // rsv0 (终帧原样回显)
+    data.append(static_cast<char>(0));     // rsv1
+
+    // 看门狗: 计数窗 + 窗末宽限3s + 结账余量 30s (零控制纯计数, 无机械段)
+    m_zlrUnlockWatchMs = tmoSec * 1000 + 3000 + 30000;
+    m_zlrUnlockWatch.start();
+    m_zlrUnlockActive = true;
+    m_zlrLockerCancelSent = false;
+    m_zlrUnlockLastPhase = 0xFF;
+    m_zlrUnlockCmd = 0x11;
+
+    if (m_zlrLockerWait) closeLockerWaitDialog();
+    m_zlrLockerWinMs = 0;
+    m_zlrLockerWait = new LockerWaitDialog(this);
+    connect(m_zlrLockerWait, &LockerWaitDialog::cancelRequested, this, &MainWindow::onLockerCancelUnlock);
+    connect(m_zlrLockerWait, &QDialog::rejected, this, [this]{
+        if (m_zlrLockerWait) closeLockerWaitDialog();
+    });
+    m_zlrLockerWait->show();
+
+    const QString modeTxt = amCnt > 0 ? QString("计数 %1 张, 窗 %2s").arg(amCnt).arg(tmoSec)
+                                      : QString("直接完成 (受理即结账 ALL_OK)");
+    appendSystemLog(QString("开锁器: 下发 UNLOCK_AM %1 — 零控制纯计数, 不动电机, 数够即结账").arg(modeTxt),
+                    QColor("#d08020"));
+    if (m_zlrLockerOut)
+        m_zlrLockerOut->append(QString("— UNLOCK_AM 下发: %1, 0.5s 轮询进度, 停止=CANCEL —").arg(modeTxt));
+
+    writeZlrFrame(0x23, data);
+
+    if (!m_zlrLockerPollTimer) {
+        m_zlrLockerPollTimer = new QTimer(this);
+        m_zlrLockerPollTimer->setInterval(500);
+        connect(m_zlrLockerPollTimer, &QTimer::timeout, this, &MainWindow::onLockerPollTimeout);
+    }
+    m_zlrLockerPollTimer->start(500);
+    onLockerPollTimeout();
+}
+
+// Round038: UNLOCK_EPC(0x10) 终帧渲染 + 流程收尾 — data=[cmd, err, ...] 随 err 变体 (协议 §13.2)
+void MainWindow::finishUnlockEpc(const QByteArray &d)
+{
+    if (d.size() < 2) return;
+    const quint8 err = static_cast<quint8>(d[1]);
+    int endReason = 0xFF, cycles = 0, okCycles = 0, failCycles = 0, elapsedMs = 0;
+    quint16 rise = 0, lower = 0;
+    QString txt;
+
+    if (err == 0) {
+        // [cmd, 0, endReason, bitmap, rise(2), lower(2), elapsed(2), rsv(4), cycles, okCycles, failCycles] (17B)
+        if (d.size() >= 4) endReason = static_cast<quint8>(d[2]);
+        if (d.size() >= 10) {
+            rise  = static_cast<quint8>(d[4]) | (static_cast<quint8>(d[5]) << 8);
+            lower = static_cast<quint8>(d[6]) | (static_cast<quint8>(d[7]) << 8);
+            elapsedMs = static_cast<quint8>(d[8]) | (static_cast<quint8>(d[9]) << 8);
+        }
+        if (d.size() >= 17) {
+            cycles     = static_cast<quint8>(d[14]);
+            okCycles   = static_cast<quint8>(d[15]);
+            failCycles = static_cast<quint8>(d[16]);
+        }
+        static const char *kEndEpc[] = {"?","ALL_OK","EPC_LOST","TIMEOUT","UHF_LOST","?","ABORTED"};
+        const char *eTxt = (endReason >= 0 && endReason <= 6) ? kEndEpc[endReason] : "?";
+        txt = QString("UNLOCK_EPC 完成: end=%1(%2)  周期 %3 (成功 %4 / 失败 %5)  升%6步/降%7步  历时 %8s")
+                  .arg(endReason).arg(eTxt).arg(cycles).arg(okCycles).arg(failCycles)
+                  .arg(rise).arg(lower).arg(elapsedMs / 1000.0, 0, 'f', 1);
+    } else {
+        static const char *kEpcErrName[] = {"OK","BUSY","PARAM","UHF_OPEN","?","?","?","HOMING","MOTOR_FAULT","MOTOR_TIMEOUT","?","NO_IR"};
+        const char *eName = (err <= 11) ? kEpcErrName[err] : "?";
+        QString detail;
+        switch (err) {
+        case 1:   // [lockerState, uhfState, stepperState] 三模块占用快照
+            if (d.size() >= 5) detail = QString("模块状态: locker=%1 uhf=%2 stepper=%3")
+                .arg(static_cast<quint8>(d[2])).arg(static_cast<quint8>(d[3])).arg(static_cast<quint8>(d[4]));
+            break;
+        case 2:   detail = "帧长/epcLen 非法"; break;
+        case 3:   // [uhfRawErr] UHF 上电/配置失败
+            if (d.size() >= 3) detail = QString("UHF 上电/配置失败 rawErr=0x%1").arg(hex2(static_cast<quint8>(d[2])));
+            break;
+        case 7:   // [switchErr] 未回零/行程开关错误 (bit0=上 bit1=下)
+            if (d.size() >= 3) detail = QString("未回零/行程开关错误 switch=0b%1")
+                .arg(static_cast<quint8>(d[2]), 2, 2, QChar('0'));
+            break;
+        case 8:   // [fault, diag1, diag2, steps(3), phase, retreat] 电机器件故障
+            if (d.size() >= 10) {
+                const quint32 mSteps = static_cast<quint8>(d[5]) | (static_cast<quint8>(d[6]) << 8)
+                                     | (static_cast<quint8>(d[7]) << 16);
+                detail = QString("电机器件故障 fault=0x%1 diag=0x%2/0x%3 步=%4 段=%5 回退=%6")
+                             .arg(static_cast<quint8>(d[2]), 2, 16, QChar('0'))
+                             .arg(static_cast<quint8>(d[3]), 2, 16, QChar('0'))
+                             .arg(static_cast<quint8>(d[4]), 2, 16, QChar('0'))
+                             .arg(mSteps).arg(static_cast<quint8>(d[8]) == 1 ? "升" : "降")
+                             .arg(static_cast<quint8>(d[9]) == 0 ? "已回退下端"
+                                : static_cast<quint8>(d[9]) == 1 ? "回退失败" : "未尝试");
+            }
+            break;
+        case 9:   // [steps(3), phase, retreat] 寻触超时/超步/停滞
+            if (d.size() >= 7) {
+                const quint32 mSteps = static_cast<quint8>(d[2]) | (static_cast<quint8>(d[3]) << 8)
+                                     | (static_cast<quint8>(d[4]) << 16);
+                detail = QString("寻触超时/超步/停滞 步=%1 段=%2 回退=%3")
+                             .arg(mSteps).arg(static_cast<quint8>(d[5]) == 1 ? "升" : "降")
+                             .arg(static_cast<quint8>(d[6]) == 0 ? "已回退下端"
+                                : static_cast<quint8>(d[6]) == 1 ? "回退失败" : "未尝试");
+            }
+            break;
+        case 11:  detail = "光电门控窗内未检测到放标 (NO_IR)"; break;
+        default:  break;
+        }
+        txt = QString("UNLOCK_EPC 失败: err=%1(%2) — %3")
+                  .arg(err).arg(eName).arg(detail.isEmpty() ? QString("payload %1B").arg(d.size()) : detail);
+    }
+
+    if (m_zlrLockerOut)
+        m_zlrLockerOut->append(err == 0 ? txt : QString("[失败] %1").arg(txt));
+    // ALL_OK=绿; EPC_LOST/TIMEOUT/ABORTED=警示橙; UHF_LOST/err≠0=红紫
+    appendSystemLog(QString("开锁器 %1").arg(txt),
+                    err == 0 ? QColor(endReason == 1 ? "#50a050" : "#d08020") : QColor("#c050a0"));
+
+    if (auto *dlg = qobject_cast<LockerWaitDialog *>(m_zlrLockerWait)) {
+        if (err == 0)
+            dlg->updateFinalEpc(endReason, cycles, okCycles, failCycles, rise, lower, elapsedMs);
+        else
+            dlg->updateFail(txt);
+    }
+    stopUnlockPolling();
+    // 900ms 后关窗 (终态停留供查看); 若期间用户已开启新一轮流程则不动新弹窗
+    QTimer::singleShot(900, this, [this]{ if (!m_zlrUnlockActive) closeLockerWaitDialog(); });
+}
+
+// Round039: UNLOCK_AM(0x11) 终帧渲染 + 流程收尾 — data=[cmd, err, ...] 随 err 变体 (协议 §13.4)
+// Round039: UNLOCK_AM(0x11) 终帧渲染 + 流程收尾 — data=[cmd, err, ...] 随 err 变体 (协议 §13.4)
+void MainWindow::finishUnlockAm(const QByteArray &d)
+{
+    if (d.size() < 2) return;
+    const quint8 err = static_cast<quint8>(d[1]);
+    int endReason = 0xFF, amCnt = 0, deactDone = 0, deactFail = 0, elapsedSec = 0;
+    quint16 rise = 0, lower = 0;
+    QString txt;
+
+    if (err == 0) {
+        // [cmd, 0, endReason, rise(2), lower(2), elapsed(2, 整秒), amCnt, deactDone, deactFail, rsv0, rsv1] (14B)
+        if (d.size() >= 3) endReason = static_cast<quint8>(d[2]);
+        if (d.size() >= 9) {
+            rise  = static_cast<quint8>(d[3]) | (static_cast<quint8>(d[4]) << 8);
+            lower = static_cast<quint8>(d[5]) | (static_cast<quint8>(d[6]) << 8);
+            elapsedSec = static_cast<quint8>(d[7]) | (static_cast<quint8>(d[8]) << 8);
+        }
+        if (d.size() >= 13) {
+            amCnt     = static_cast<quint8>(d[9]);
+            deactDone = static_cast<quint8>(d[10]);
+            deactFail = static_cast<quint8>(d[11]);
+        }
+        static const char *kEndAm[] = {"?","ALL_OK","?","TIMEOUT","?","?","ABORTED"};
+        const char *eTxt = (endReason >= 0 && endReason <= 6) ? kEndAm[endReason] : "?";
+        // 2026-09-16:10 修订: 全程不动电机, rise/lower 恒 0 — 文案不再显示升降步数
+        txt = QString("UNLOCK_AM 完成: end=%1(%2)  解锁 %3/%4 张 (失败 %5)  历时 %6s")
+                  .arg(endReason).arg(eTxt).arg(deactDone).arg(amCnt).arg(deactFail).arg(elapsedSec);
+    } else {
+        static const char *kAmErrName[] = {"OK","BUSY","PARAM","?","?","?","?","HOMING","MOTOR_FAULT","MOTOR_TIMEOUT","AM_LINK"};
+        const char *eName = (err <= 10) ? kAmErrName[err] : "?";
+        QString detail;
+        switch (err) {
+        case 1:   // [lockerState, uhfState, stepperState]
+            if (d.size() >= 5) detail = QString("模块状态: locker=%1 uhf=%2 stepper=%3")
+                .arg(static_cast<quint8>(d[2])).arg(static_cast<quint8>(d[3])).arg(static_cast<quint8>(d[4]));
+            break;
+        case 2:   detail = "帧长非法 / tmo=0"; break;
+        case 7:
+            if (d.size() >= 3) detail = QString("未回零/行程开关错误 switch=0b%1")
+                .arg(static_cast<quint8>(d[2]), 2, 2, QChar('0'));
+            break;
+        case 8:
+            if (d.size() >= 10) {
+                const quint32 mSteps = static_cast<quint8>(d[5]) | (static_cast<quint8>(d[6]) << 8)
+                                     | (static_cast<quint8>(d[7]) << 16);
+                detail = QString("电机器件故障 fault=0x%1 diag=0x%2/0x%3 步=%4 段=%5 回退=%6")
+                             .arg(static_cast<quint8>(d[2]), 2, 16, QChar('0'))
+                             .arg(static_cast<quint8>(d[3]), 2, 16, QChar('0'))
+                             .arg(static_cast<quint8>(d[4]), 2, 16, QChar('0'))
+                             .arg(mSteps).arg(static_cast<quint8>(d[8]) == 1 ? "升" : "降")
+                             .arg(static_cast<quint8>(d[9]) == 0 ? "已回退下端"
+                                : static_cast<quint8>(d[9]) == 1 ? "回退失败" : "未尝试");
+            }
+            break;
+        case 9:
+            if (d.size() >= 7) {
+                const quint32 mSteps = static_cast<quint8>(d[2]) | (static_cast<quint8>(d[3]) << 8)
+                                     | (static_cast<quint8>(d[4]) << 16);
+                detail = QString("寻触超时/超步/停滞 步=%1 段=%2 回退=%3")
+                             .arg(mSteps).arg(static_cast<quint8>(d[5]) == 1 ? "升" : "降")
+                             .arg(static_cast<quint8>(d[6]) == 0 ? "已回退下端"
+                                : static_cast<quint8>(d[6]) == 1 ? "回退失败" : "未尝试");
+            }
+            break;
+        case 10:  detail = "AM 链路失败 (受理探链/切模式阶段)"; break;
+        default:  break;
+        }
+        txt = QString("UNLOCK_AM 失败: err=%1(%2) — %3")
+                  .arg(err).arg(eName).arg(detail.isEmpty() ? QString("payload %1B").arg(d.size()) : detail);
+    }
+
+    if (m_zlrLockerOut)
+        m_zlrLockerOut->append(err == 0 ? txt : QString("[失败] %1").arg(txt));
+    // ALL_OK=绿; TIMEOUT(部分完成)=警示橙; ABORTED/AM_LINK/err≠0=红紫
+    appendSystemLog(QString("开锁器 %1").arg(txt),
+                    err == 0 ? QColor(endReason == 1 ? "#50a050" : "#d08020") : QColor("#c050a0"));
+
+    if (auto *dlg = qobject_cast<LockerWaitDialog *>(m_zlrLockerWait)) {
+        if (err == 0)
+            dlg->updateFinalAm(endReason, amCnt, deactDone, deactFail, rise, lower, elapsedSec);
+        else
+            dlg->updateFail(txt);
+    }
+    stopUnlockPolling();
+    // 900ms 后关窗 (终态停留供查看); 若期间用户已开启新一轮流程则不动新弹窗
+    QTimer::singleShot(900, this, [this]{ if (!m_zlrUnlockActive) closeLockerWaitDialog(); });
+}
+
+// Round038: 停轮询 + 复位流程标志 (终帧/看门狗/断开 共用收尾; 弹窗由 closeLockerWaitDialog 管)
+void MainWindow::stopUnlockPolling()
+{
+    if (m_zlrLockerPollTimer) m_zlrLockerPollTimer->stop();
+    m_zlrUnlockActive = false;
+    m_zlrLockerCancelSent = false;
+    m_zlrUnlockLastPhase = 0xFF;
+}
+
+// Round038: 主动结束 — CANCEL (0x04): 设备立即回 OK, 停机+免疫安全回降后以 endReason=6 ABORTED 终帧结账
+//   (CANCEL 后回降完成前仍处解锁态; 回降需数秒 — 轮询不停, 终帧仍进弹窗/输出区;
+//    看门狗压至 30s 回降余量, 防终帧不回无限轮询)
 void MainWindow::onLockerCancelUnlock()
 {
-    // 用户点等待对话框"停止" → 发 CANCEL (0x04)
-    QString err;
-    appendSystemLog("开锁器: 用户停止, 发 CANCEL...", QColor("#d08020"));
-    sendZlrSubCmd(0x23, 0x04, QByteArray(), nullptr, &err, 3000);
-    // CANCEL 协议 §13: 0x0A 流程中打断请求 — 立即回 OK, 安全回降后以 endReason=6 ABORTED 结账回 0x0A 终帧
-    // 为防终帧迟迟不来, 启 1s 兜底定时强关等待框 (终帧仍会由后台阻塞调用解析落盘)
-    if (!m_zlrLockerCancelGuard) {
-        m_zlrLockerCancelGuard = new QTimer(this);
-        m_zlrLockerCancelGuard->setSingleShot(true);
-        connect(m_zlrLockerCancelGuard, &QTimer::timeout, this, [this]{
-            // 兜底: 即便 0x0A 终帧没回来, 也强制关闭等待框
-            if (m_zlrLockerWait) {
-                appendSystemLog("开锁器: 停止后兜底超时 1s 强关等待框", QColor("#d08020"));
-                closeLockerWaitDialog();
-            }
-        });
-    }
-    m_zlrLockerCancelGuard->start(1000);
+    if (!m_zlrUnlockActive) return;
+    m_zlrLockerCancelSent = true;
+    appendSystemLog("开锁器: 用户停止, 发 CANCEL — 停机+安全回降后回 endReason=6 终帧...", QColor("#d08020"));
+    if (m_zlrLockerOut)
+        m_zlrLockerOut->append("[停止] 已发 CANCEL — 停机+安全回降后结账 (endReason=6 ABORTED)");
+    writeZlrFrame(0x23, QByteArray(1, static_cast<char>(0x04)));
+    // 看门狗压缩至回降余量 30s (原流程窗作废, 防终帧不回无限轮询)
+    m_zlrUnlockWatch.restart();
+    m_zlrUnlockWatchMs = 30000;
+    if (auto *dlg = qobject_cast<LockerWaitDialog *>(m_zlrLockerWait))
+        dlg->updateProgress(tr("停止中, 等待安全回降..."));
 }
 
 // ===== RGB (FC=0x24) =====
@@ -5041,6 +5443,10 @@ void MainWindow::enableSuppBySw(const QString &swText)
 
 void MainWindow::resetUiToInitialState()
 {
+    // Round038: 断开 (含 USB 拔出) 时中止解锁流程 — 停轮询/看门狗 + 关弹窗
+    stopUnlockPolling();
+    closeLockerWaitDialog();
+
     // 版本信息
     if (m_verAddrEdit) m_verAddrEdit->clear();
     if (m_verSwEdit)   m_verSwEdit->clear();
@@ -5140,6 +5546,8 @@ bool MainWindow::waitForResponse(int timeoutMs)
 
 void MainWindow::appendLog(const QString &prefix, const QByteArray &data, const QColor &color, const QString &note)
 {
+    // Round_099: 帧镜像落盘 (恒 hex, 与界面显示模式无关, 供离线分析)
+    AppLogger::frame(prefix, data, note);
     QString timestamp = QTime::currentTime().toString("HH:mm:ss.zzz");
     QString content;
     if (m_logHexCheck->isChecked()) {
@@ -5167,6 +5575,7 @@ void MainWindow::appendLog(const QString &prefix, const QByteArray &data, const 
 
 void MainWindow::appendSystemLog(const QString &msg, const QColor &color)
 {
+    AppLogger::line("SYS", msg); // Round_099: 系统消息落盘
     QString timestamp = QTime::currentTime().toString("HH:mm:ss.zzz");
     m_logDisplay->append(QString("<span style=\"color:#b0a0c8\">%1</span> <span style=\"color:%2\">[SYS]</span> %3")
         .arg(timestamp)
@@ -5305,7 +5714,8 @@ bool sendFirmwareChunk(MainWindow *mw, ITransport *tp,
 {
     mw->getRxBuffer().clear(); // 先清RX再发，避免串入旧数据
     QByteArray chunk = fwData.mid(offset, chunkSize);
-    QByteArray req = parser->makeUpgradeDataFrame(devAddr, seq, static_cast<quint16>(offset), chunk);
+    // addrOffset 为 APP 区字节偏移, Round_098 起 u32 LE (原 u16 在固件>64KB 时溢出)
+    QByteArray req = parser->makeUpgradeDataFrame(devAddr, seq, static_cast<quint32>(offset), chunk);
     tp->writeData(req);
     tp->waitForBytesWritten(5000); // 等待实际发送完成
     mw->appendLog("[TX]", req, QColor("#c050a0"));
@@ -5390,7 +5800,10 @@ void MainWindow::startUpgrade(const QString &binPath)
         .arg(fwSize).arg(fwCrc, 8, 16, QChar('0')).toUpper());
     appendSystemLog("[升级] 步骤1/6: Boot层握手...", QColor("#7830b0"));
 
-    const int CHUNK_SIZE = (m_transportType == TransportType::Usb) ? 48 : 512;
+    // 数据帧 = 帧头6 + FC1 + data(seq2+addrOffset4+chunk) + CRC4 = 11+6+chunk.
+    // Round_098 起 addrOffset 扩为 4B: USB chunk 由 48→46, 帧长恰 63B = HID 单报告上限
+    // (HidManager 写路径不分包, 超 63B 会截尾丢 CRC).
+    const int CHUNK_SIZE = (m_transportType == TransportType::Usb) ? 46 : 512;
     int totalFrames = (fwSize + CHUNK_SIZE - 1) / CHUNK_SIZE;
     m_logProgressBar->setMaximum(totalFrames);
     m_logProgressBar->setValue(0);

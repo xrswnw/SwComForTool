@@ -1,4 +1,5 @@
 #include "SerialPortManager.h"
+#include "AppLogger.h"
 #include <QSerialPortInfo>
 
 SerialPortManager::SerialPortManager(QObject *parent)
@@ -63,15 +64,20 @@ bool SerialPortManager::open(const QVariantMap &params)
     m_port->setFlowControl(QSerialPort::NoFlowControl);
 
     if (m_port->open(QIODevice::ReadWrite)) {
+        AppLogger::line("COM", QString("打开成功 %1 波特率=%2 数据位=%3 停止位=%4 校验=%5")
+                            .arg(portName).arg(baudRate).arg(dataBits)
+                            .arg(stopBitsIndex).arg(parityIndex));
         emit opened();
         return true;
     }
+    AppLogger::line("COM-ERR", QString("打开失败 %1: %2").arg(portName, m_port->errorString()));
     return false;
 }
 
 void SerialPortManager::close()
 {
     if (m_port->isOpen()) {
+        AppLogger::line("COM", "关闭串口");
         m_port->close();
         emit closed();
     }
@@ -119,6 +125,8 @@ void SerialPortManager::onReadyRead()
 
 void SerialPortManager::onError(QSerialPort::SerialPortError error)
 {
-    if (error != QSerialPort::NoError)
+    if (error != QSerialPort::NoError) {
+        AppLogger::line("COM-ERR", QString("err=%1: %2").arg(static_cast<int>(error)).arg(m_port->errorString()));
         emit portError();
+    }
 }

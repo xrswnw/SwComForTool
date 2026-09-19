@@ -1,5 +1,8 @@
 # Build output
 build/
+build-debug/
+build-win-arm64/
+build-win-x64/
 deploy/
 
 # Qt SDK (本地 Qt 框架, 不入库; 类比硬件项目 Sdk/)

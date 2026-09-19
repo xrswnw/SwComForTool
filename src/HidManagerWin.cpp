@@ -1,4 +1,5 @@
 #include "HidManagerWin.h"
+#include "AppLogger.h"
 #include <QMetaObject>
 #include <QMutexLocker>
 #include <QThread>
@@ -82,8 +83,7 @@ protected:
                     break;  // close 取消
                 } else {
                     // 设备可能拔出或错误
-                    { QFile _f(QDir::tempPath() + "/comfor_win_read.log"); _f.open(QIODevice::WriteOnly|QIODevice::Append|QIODevice::Text);
-                      QTextStream _s(&_f); _s << "[read] ReadFile err=" << err << "\n"; _s.flush(); }
+                    AppLogger::line("HID-ERR", QString("ReadFile err=%1 (%2)").arg(err).arg(AppLogger::winErrText(err)));
                     QThread::msleep(20);
                     continue;
                 }
@@ -211,6 +211,9 @@ bool HidManagerWin::open(const QVariantMap &params)
     // 若无 path, 用 vid/pid 重新枚举取第一个匹配设备路径
     if (path.isEmpty()) {
         auto devs = enumerate(vid, pid);
+        AppLogger::line("HID", QString("VID/PID 枚举 %1:%2 命中 %3 个")
+                            .arg(vid, 4, 16, QChar('0')).arg(pid, 4, 16, QChar('0')).toUpper()
+                            .arg(devs.size()));
         if (devs.isEmpty()) {
             m_lastError = QString("未发现 VID %1 PID %2 的 HID 设备")
                               .arg(vid, 4, 16, QChar('0')).arg(pid, 4, 16, QChar('0')).toUpper();
@@ -226,6 +229,8 @@ bool HidManagerWin::open(const QVariantMap &params)
     if (hDev == INVALID_HANDLE_VALUE) {
         DWORD err = GetLastError();
         m_lastError = QString("CreateFile 失败: %1 (错误码 %2)").arg(path).arg(err);
+        AppLogger::line("HID-ERR", QString("CreateFile err=%1 (%2) path=%3")
+                            .arg(err).arg(AppLogger::winErrText(err)).arg(path));
         return false;
     }
 
@@ -241,9 +246,10 @@ bool HidManagerWin::open(const QVariantMap &params)
         }
         HidD_FreePreparsedData(prep);
     }
-    { QFile _f(QDir::tempPath() + "/comfor_win_open.log"); _f.open(QIODevice::WriteOnly|QIODevice::Append|QIODevice::Text);
-      QTextStream _s(&_f); _s << "[open] path=" << path << " inLen=" << inputReportLen
-        << " outLen=" << outputReportLen << "\n"; _s.flush(); }
+    AppLogger::line("HID", QString("打开成功 %1:%2 输入报文=%3B 输出报文=%4B")
+                        .arg(vid, 4, 16, QChar('0')).arg(pid, 4, 16, QChar('0')).toUpper()
+                        .arg(inputReportLen).arg(outputReportLen));
+    AppLogger::line("HID", QString("路径: %1").arg(path));
 
     // 起读线程
     m_readerThread = new HidManagerWinThread(this, hDev, inputReportLen, outputReportLen);
@@ -262,6 +268,7 @@ void HidManagerWin::close()
 {
 #ifdef Q_OS_WIN
     if (m_readerThread) {
+        AppLogger::line("HID", "关闭设备");
         HANDLE hDev = m_readerThread->device();
         m_readerThread->stop();
         if (m_readerThread->isRunning()) m_readerThread->wait(2000);
@@ -318,12 +325,14 @@ void HidManagerWin::writeData(const QByteArray &data)
             } else {
                 CancelIoEx(hDev, &ov);
                 m_lastError = "WriteFile 超时";
+                AppLogger::line("HID-ERR", "WriteFile 超时(30s)");
                 CloseHandle(ov.hEvent);
                 emit portError();
                 return;
             }
         } else {
-            m_lastError = QString("WriteFile 失败: 错误码 %1").arg(err);
+            m_lastError = QString("WriteFile 失败: 错误 %1 (%2)").arg(err).arg(AppLogger::winErrText(err));
+            AppLogger::line("HID-ERR", QString("%1 发帧 %2B").arg(m_lastError).arg(data.size()));
             CloseHandle(ov.hEvent);
             emit portError();
             return;

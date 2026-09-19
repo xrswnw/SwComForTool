@@ -161,7 +161,9 @@ public:
     // 固件更新帧
     // verifyLevel: 0=全级(CRC+Size+向量+绑定), 1=中级(CRC+Size+向量), 2=基本级(CRC+Size)
     QByteArray makeUpgradeStartFrame(quint8 devAddr, quint32 fwSize, quint32 fwCrc, quint32 fwVer, quint32 bindVerify, quint8 verifyLevel = 0) const;
-    QByteArray makeUpgradeDataFrame(quint8 devAddr, quint16 seq, quint16 offset, const QByteArray &fwData) const;
+    // 数据帧 (Boot_Protocol §FC_FW_DATA, Round_098 BUG#4 起): data = seq(2B u16 LE) + addrOffset(4B u32 LE) + payload
+    // addrOffset 为 APP 区偏移 (0..FwSize-1); 响应 data = seq(2B) + result(1B)
+    QByteArray makeUpgradeDataFrame(quint8 devAddr, quint16 seq, quint32 addrOffset, const QByteArray &fwData) const;
     QByteArray makeUpgradeVerifyFrame(quint8 devAddr) const;
     QByteArray makeUpgradeExecFrame(quint8 devAddr) const;
 

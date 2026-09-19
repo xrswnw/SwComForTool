@@ -5,7 +5,7 @@
             "name": "调试 ComforTool (F5, 跳过USB提权, COM/协议/UI可调试)",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/SwComForTool.app/Contents/MacOS/SwComForTool",
+            "program": "${workspaceFolder}/build-debug/SwComForTool.app/Contents/MacOS/SwComForTool",
             "args": [],
             "cwd": "${workspaceFolder}",
             "environment": [
@@ -32,19 +32,13 @@
             ],
             "preLaunchTask": "构建 Debug",
             "MIMode": "lldb",
-            "stopAtEntry": false,
-            "setupCommands": [
-                {
-                    "text": "platform select arm64-apple-macosx",
-                    "description": "force arm64 target"
-                }
-            ]
+            "stopAtEntry": false
         },
         {
             "name": "调试 ComforTool (不重新编译, 跳过USB提权)",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/SwComForTool.app/Contents/MacOS/SwComForTool",
+            "program": "${workspaceFolder}/build-debug/SwComForTool.app/Contents/MacOS/SwComForTool",
             "args": [],
             "cwd": "${workspaceFolder}",
             "environment": [
@@ -69,13 +63,14 @@
                     "value": "1"
                 }
             ],
-            "MIMode": "lldb"
+            "MIMode": "lldb",
+            "stopAtEntry": false
         },
         {
             "name": "调试 ComforTool (手动sudo, USB可用)",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/SwComForTool.app/Contents/MacOS/SwComForTool",
+            "program": "${workspaceFolder}/build-debug/SwComForTool.app/Contents/MacOS/SwComForTool",
             "args": [],
             "cwd": "${workspaceFolder}",
             "environment": [
@@ -97,27 +92,16 @@
                 }
             ],
             "MIMode": "lldb",
-            "externalConsole": false
+            "stopAtEntry": false
         },
         {
             "name": "调试 ComforTool (attach, USB可用, 推荐)",
-            "type": "lldb",
+            "type": "cppdbg",
             "request": "attach",
-            "program": "${workspaceFolder}/build/SwComForTool.app/Contents/MacOS/SwComForTool",
-            "pid": "${command PickProcess}",
-            "preLaunchTask": "构建并启动 ComforTool (普通进程)",
-            "stopOnEntry": false,
-            "sourceLanguages": ["cpp"]
-        },
-        {
-            "name": "调试 ComforTool (attach等待, USB可用, 免选进程)",
-            "type": "lldb",
-            "request": "attach",
-            "program": "${workspaceFolder}/build/SwComForTool.app/Contents/MacOS/SwComForTool",
-            "waitFor": true,
-            "preLaunchTask": "构建并启动 ComforTool (普通进程)",
-            "stopOnEntry": false,
-            "sourceLanguages": ["cpp"]
+            "program": "${workspaceFolder}/build-debug/SwComForTool.app/Contents/MacOS/SwComForTool",
+            "processId": "${command:pickProcess}",
+            "MIMode": "lldb",
+            "preLaunchTask": "构建并启动 ComforTool (普通进程)"
         },
         {
             "name": "调试 SwComForTool (Windows, F5)",

@@ -307,13 +307,16 @@ QByteArray ProtocolParser::makeUpgradeStartFrame(quint8 devAddr, quint32 fwSize,
     return makeFrame(devAddr, 0x03, data);
 }
 
-QByteArray ProtocolParser::makeUpgradeDataFrame(quint8 devAddr, quint16 seq, quint16 offset, const QByteArray &fwData) const
+QByteArray ProtocolParser::makeUpgradeDataFrame(quint8 devAddr, quint16 seq, quint32 addrOffset, const QByteArray &fwData) const
 {
+    // Round_098 BUG#4 起: addrOffset 扩为 u32 LE (固件>64KB 时 u16 无编码), payload 起点由 data[4] 移到 data[6]
     QByteArray data;
     data.append(static_cast<char>(seq & 0xFF));
     data.append(static_cast<char>((seq >> 8) & 0xFF));
-    data.append(static_cast<char>(offset & 0xFF));
-    data.append(static_cast<char>((offset >> 8) & 0xFF));
+    data.append(static_cast<char>(addrOffset & 0xFF));
+    data.append(static_cast<char>((addrOffset >> 8) & 0xFF));
+    data.append(static_cast<char>((addrOffset >> 16) & 0xFF));
+    data.append(static_cast<char>((addrOffset >> 24) & 0xFF));
     data.append(fwData);
     return makeFrame(devAddr, 0x04, data);
 }
@@ -333,8 +336,9 @@ QString ProtocolParser::resultToString(quint8 result, bool isBoot)
     if (isBoot) {
         switch (result) {
         case 0x00: return "成功";
-        case 0x01: return "固件大小超限或数据不足";
-        case 0x02: return "Flash擦除失败";
+        case 0x01: return "固件大小超限或数据不足(UPG_NO_SPACE)";
+        case 0x02: return "Flash擦除或写失败(UPG_ERASE_FAIL/DATA_FLASH_FAIL)"; // 0x03 FC=擦除失败, 0x04 FC=写失败
+        case 0x03: return "数据偏移越界(DATA_ADDR_ERR: addrOffset+dataLen 越出 App 区)";
         default: return QString("未知错误码: 0x%1").arg(hex2(static_cast<int>(result)));
         }
     } else {
